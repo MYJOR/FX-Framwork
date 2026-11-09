@@ -14,6 +14,7 @@
 #include "character.h"
 #include "diag.h"
 #include "debug_ui.h"
+#include "gamepad.h"
 
 #define PI 3.14159265f
 
@@ -157,6 +158,14 @@ int main(int argc, char **argv) {
             if (!pf) continue;
             fclose(pf);
             have_char = character_load(&character, path);
+            if (have_char) {
+                snprintf(path, sizeof path, "%s/UAL2.glb", adirs[i]);
+                if (!character_load_slide(&character, path)) fprintf(stderr, "slide animation not loaded\n");
+                char rm1[300], rm2[300];
+                snprintf(rm1, sizeof rm1, "%s/UAL1_RM.glb", adirs[i]);
+                snprintf(rm2, sizeof rm2, "%s/UAL2_RM.glb", adirs[i]);
+                if (!character_load_motion(&character, rm1, rm2)) fprintf(stderr, "motion matching unavailable, using speed blend\n");
+            }
         }
         if (!have_char) fprintf(stderr, "character asset not loaded, using capsule\n");
     }
@@ -180,7 +189,7 @@ int main(int argc, char **argv) {
         { player_update(&player, 1.0f / 60.0f, f.x, f.z, run_shot);
           trail_update(&trail, &player, 1.0f / 60.0f, time_offset + t);
           emit_trail_events(&particles, &trail);
-          if (have_char) character_update(&character, 1.0f / 60.0f, player.speed);
+          if (have_char) character_update(&character, 1.0f / 60.0f, player.speed, player.sliding);
           particles_update(&particles, 1.0f / 60.0f, player.pos, time_offset + t); }
         cc.target = v3_add(player.pos, v3(0, 1.3f, 0));
         cc.yaw += orbit_after;
@@ -204,6 +213,11 @@ int main(int argc, char **argv) {
 
         if (plat.keys[VK_ESCAPE]) break;
 
+        /* Xbox controller: left stick move, right stick camera, RT sprint, LT stroll, Y free cam,
+           D-pad up/down sun height, (free cam) RB up / LB down */
+        static Gamepad pad;
+        gamepad_poll(&pad);
+
         /* debug hotkeys (edge triggered) */
         for (int k = 0; k < 5; k++) {
             int down = plat.keys[VK_F1 + k];
@@ -223,7 +237,7 @@ int main(int argc, char **argv) {
         if (rmb_on_ui) plat.mouse_dx = plat.mouse_dy = 0;
 
         /* F toggles free camera (debug) */
-        if (plat.keys['F'] && !f_was_down) {
+        if ((plat.keys['F'] && !f_was_down) || (pad.pressed & GP_Y)) {
             free_mode = !free_mode;
             if (free_mode) free_pos = cc.eye;
         }
@@ -232,9 +246,11 @@ int main(int argc, char **argv) {
         /* mouse orbits the chase camera / turns the free camera */
         cc.yaw += plat.mouse_dx * 0.004f;
         cc.pitch -= plat.mouse_dy * 0.004f;
+        cc.yaw += pad.rx * 2.6f * dt;
+        cc.pitch += pad.ry * 1.8f * dt;
         cc.pitch = clampf(cc.pitch, -0.35f, 1.35f);
-        if (plat.keys['Q']) scene.sun_elevation -= 0.4f * dt;
-        if (plat.keys['E']) scene.sun_elevation += 0.4f * dt;
+        if (plat.keys['Q'] || (pad.buttons & GP_DDOWN)) scene.sun_elevation -= 0.4f * dt;
+        if (plat.keys['E'] || (pad.buttons & GP_DUP)) scene.sun_elevation += 0.4f * dt;
         scene.sun_elevation = clampf(scene.sun_elevation, -0.15f, 1.5f);
 
         V3 cam_fwd = cam_forward(cc.yaw, cc.pitch);
@@ -243,7 +259,11 @@ int main(int argc, char **argv) {
         V3 view_fwd; /* final view direction */
 
         if (free_mode) {
-            float speed = plat.keys[VK_SHIFT] ? 40.0f : 8.0f;
+            float speed = (plat.keys[VK_SHIFT] || pad.rt > 0.5f) ? 40.0f : 8.0f;
+            free_pos = v3_add(free_pos, v3_scale(cam_fwd, pad.ly * speed * dt));
+            free_pos = v3_add(free_pos, v3_scale(cam_right, pad.lx * speed * dt));
+            if (pad.buttons & GP_RB) free_pos.y += speed * dt;
+            if (pad.buttons & GP_LB) free_pos.y -= speed * dt;
             if (plat.keys['W']) free_pos = v3_add(free_pos, v3_scale(cam_fwd, speed * dt));
             if (plat.keys['S']) free_pos = v3_add(free_pos, v3_scale(cam_fwd, -speed * dt));
             if (plat.keys['D']) free_pos = v3_add(free_pos, v3_scale(cam_right, speed * dt));
@@ -262,9 +282,29 @@ int main(int argc, char **argv) {
             if (plat.keys['S']) { ix -= f.x; iz -= f.z; }
             if (plat.keys['D']) { ix += cam_right.x; iz += cam_right.z; }
             if (plat.keys['A']) { ix -= cam_right.x; iz -= cam_right.z; }
+            ix += f.x * pad.ly + cam_right.x * pad.lx;
+            iz += f.z * pad.ly + cam_right.z * pad.lx;
+            int gait = (plat.keys[VK_SHIFT] || pad.rt > 0.5f || (pad.buttons & GP_LSTICK)) ? 1
+                     : ((plat.keys[VK_CONTROL] || pad.lt > 0.5f) ? 2 : 0);
+            player.yaw_drive = have_char && character_mm_turn(&character, &player.yaw_rate);
+            static int space_was;
+            int space = plat.keys[VK_SPACE];
+            player.jump_req = (space && !space_was) || (pad.pressed & GP_A);
+            space_was = space;
             diag_zone_begin("Sim:Player");
-            player_update(&player, dt, ix, iz, plat.keys[VK_SHIFT] ? 1 : (plat.keys[VK_CONTROL] ? 2 : 0));
+            player_update(&player, dt, ix, iz, gait);
             diag_zone_end();
+            {   /* sand bursts at takeoff and touchdown */
+                static int air_prev;
+                float fdx = sinf(player.yaw), fdz = -cosf(player.yaw);
+                if (player.air && !air_prev) particles_emit_spray(&particles, player.pos.x, terrain_height(player.pos.x, player.pos.z), player.pos.z, fdx, fdz, 5.0f);
+                if (!player.air && air_prev) {
+                    float gy = terrain_height(player.pos.x, player.pos.z);
+                    particles_emit_spray(&particles, player.pos.x, gy, player.pos.z, fdx, fdz, 7.0f);
+                    particles_emit_step(&particles, player.pos.x, gy, player.pos.z, fdx, fdz, 7.5f);
+                }
+                air_prev = player.air;
+            }
             diag_zone_begin("Sim:Trail");
             trail_update(&trail, &player, dt, time);
             emit_trail_events(&particles, &trail);
@@ -283,7 +323,19 @@ int main(int argc, char **argv) {
         }
 
         diag_zone_begin("Sim:Animation");
-        if (have_char) character_update(&character, dt, free_mode ? 0.0f : player.speed);
+        if (have_char) {
+            M4 ikm = m4_mul(m4_translate(player.pos), m4_rotate_y(-player.yaw + PI));
+            ikm = m4_mul(ikm, m4_rotate_x(player.lean * 0.35f));
+            float ik_sc = 1.75f / character.height;
+            for (int k = 0; k < 12; k++) ikm.m[k] *= ik_sc;
+            character_set_ik(&character, ikm, !free_mode);
+            character_set_air(&character, !free_mode && player.air);
+            /* the head follows where the camera looks */
+            character_set_look(&character, cam.x + view_fwd.x * 30.0f, cam.y + view_fwd.y * 30.0f, cam.z + view_fwd.z * 30.0f, !free_mode);
+            if (free_mode) character_set_motion(&character, 0, 0, 0, 0, player.yaw);
+            else character_set_motion(&character, player.vx, player.vz, player.des_vx, player.des_vz, player.yaw);
+        }
+        if (have_char) character_update(&character, dt, free_mode ? 0.0f : player.speed, free_mode ? 0 : player.sliding);
         diag_zone_end();
 
         reload_timer += dt;
@@ -301,7 +353,9 @@ int main(int argc, char **argv) {
         V3 up = v3_cross(right, view_fwd);
         float aspect = (float)plat.width / (float)(plat.height > 0 ? plat.height : 1);
         glViewport(0, 0, plat.width, plat.height);
-        M4 proj = m4_perspective(scene.fov, aspect, 0.3f, 3000.0f);
+        static float fov_boost; { float tgt = free_mode ? 0.0f : 0.12f * clampf(player.speed / 15.0f, 0.0f, 1.0f); fov_boost += (tgt - fov_boost) * (1.0f - expf(-3.0f * dt)); }
+        float fov_eff = scene.fov + fov_boost; /* widens a little with speed */
+        M4 proj = m4_perspective(fov_eff, aspect, 0.3f, 3000.0f);
         M4 view = m4_view(cam, view_fwd);
         M4 vp = m4_mul(proj, view);
 
@@ -316,7 +370,7 @@ int main(int argc, char **argv) {
         set3f(sky.id, "uRight", right);
         set3f(sky.id, "uUp", up);
         set3f(sky.id, "uFwd", view_fwd);
-        set1f(sky.id, "uTanHalfFov", tanf(scene.fov * 0.5f));
+        set1f(sky.id, "uTanHalfFov", tanf(fov_eff * 0.5f));
         set1f(sky.id, "uAspect", aspect);
         glBindVertexArray(empty_vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -391,7 +445,7 @@ int main(int argc, char **argv) {
         glUseProgram(dust.id);
         common_uniforms(dust.id, &scene, cam, time);
         glUniformMatrix4fv(glGetUniformLocation(dust.id, "uViewProj"), 1, GL_FALSE, vp.m);
-        set1f(dust.id, "uPixelScale", (float)plat.height / (2.0f * tanf(scene.fov * 0.5f)));
+        set1f(dust.id, "uPixelScale", (float)plat.height / (2.0f * tanf(fov_eff * 0.5f)));
         glEnable(GL_PROGRAM_POINT_SIZE);
         if (dbg.draw_dust) particles_draw_dust(&particles);
         glDisable(GL_PROGRAM_POINT_SIZE);
@@ -422,6 +476,8 @@ int main(int argc, char **argv) {
             dw.cam[0] = cam.x; dw.cam[1] = cam.y; dw.cam[2] = cam.z;
             dw.time = time;
             if (have_char) for (int k = 0; k < 4; k++) dw.anim_w[k] = character.w[k];
+            dw.mm_clip = have_char ? character_mm_clip(&character, &dw.mm_time) : NULL;
+            dw.airborne = player.air;
             dw.sun_elevation = &scene.sun_elevation; dw.sun_azimuth = &scene.sun_azimuth; dw.fov = &scene.fov;
             debug_ui_frame(&dbg, &dw, plat.width, plat.height, dt);
         }

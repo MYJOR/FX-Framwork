@@ -275,7 +275,9 @@ void trail_update(Trail *t, const Player *p, float dt, float time) {
     int sliding = p->sliding && p->speed > 1.5f;
     int moving = p->speed > 0.3f;
 
-    if (seg > 1e-5f && moving) {
+    if (p->air) {
+        /* airborne: leave no tracks */
+    } else if (seg > 1e-5f && moving) {
         if (sliding) {
             walk_segment(t, p, sx, sz, ex, ez, t->path, &t->groove_accum, GROOVE_SPACING, groove);
         } else {

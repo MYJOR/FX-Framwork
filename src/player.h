@@ -13,6 +13,12 @@ typedef struct {
     float lean;    /* pitch in radians: + tilts forward, - tilts backward (spring driven) */
     float lean_vel, fwd_prev, accel_f; /* spring velocity, last forward speed, smoothed forward accel */
     float speed;
+    float des_vx, des_vz; /* velocity the input is asking for (m/s), used by motion matching */
+    float vy;      /* vertical velocity while airborne */
+    int air;       /* 1 while off the ground */
+    int yaw_drive;     /* 1: a turn animation owns the heading this frame */
+    float yaw_rate;    /* rad/s applied while yaw_drive is set */
+    int jump_req;  /* set by the caller for one frame to request a jump */
     int sliding;   /* true while the slope is steep enough to carry the player */
     /* capsule mesh */
     GLuint vao, vbo, ibo;

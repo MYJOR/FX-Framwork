@@ -14,6 +14,8 @@
 #define SLIDE_ACCEL 24.0f
 #define SLIDE_MAX_SPEED 20.0f
 #define TURN_RATE 10.0f
+#define JUMP_SPEED 5.4f         /* m/s up; ~1 m apex with GRAVITY */
+#define GRAVITY 15.0f
 #define WORLD_LIMIT 330.0f
 
 static void build_capsule(Player *p) {
@@ -65,6 +67,8 @@ void player_init(Player *p, float x, float z) {
     p->yaw = 0;
     p->lean = p->lean_vel = p->fwd_prev = p->accel_f = 0;
     p->speed = 0;
+    p->des_vx = p->des_vz = 0;
+    p->vy = 0; p->air = 0; p->jump_req = 0; p->yaw_drive = 0; p->yaw_rate = 0;
     p->sliding = 0;
     build_capsule(p);
 }
@@ -90,8 +94,10 @@ void player_update(Player *p, float dt, float mx, float mz, int run) {
     float top_speed = (run == 1 ? RUN_SPEED : (run == 2 ? STROLL_SPEED : WALK_SPEED)) * slope_slow;
 
     float tx = mx * top_speed, tz = mz * top_speed;
+    p->des_vx = tx; p->des_vz = tz;
     /* control fades as the slope takes over */
     float follow = GROUND_FOLLOW * (1.0f - 0.8f * steep);
+    if (p->air) { follow *= 0.25f; steep = 0.0f; } /* little steering and no slope pull in the air */
     float k = clampf(dt * follow, 0.0f, 1.0f);
     p->vx += (tx - p->vx) * k;
     p->vz += (tz - p->vz) * k;
@@ -103,13 +109,27 @@ void player_update(Player *p, float dt, float mx, float mz, int run) {
     float cap = steep > 0 ? SLIDE_MAX_SPEED : RUN_SPEED * 1.05f;
     if (sp > cap) { p->vx *= cap / sp; p->vz *= cap / sp; sp = cap; }
     p->speed = sp;
+    /* only "sliding" when actually carried downhill; climbing up a slope doesn't count */
+    p->sliding = steep > 0.02f && (p->vx * dhx + p->vz * dhz) > 1.0f;
 
     p->pos.x = clampf(p->pos.x + p->vx * dt, -WORLD_LIMIT, WORLD_LIMIT);
     p->pos.z = clampf(p->pos.z + p->vz * dt, -WORLD_LIMIT, WORLD_LIMIT);
-    p->pos.y = terrain_height(p->pos.x, p->pos.z);
+    float ground_y = terrain_height(p->pos.x, p->pos.z);
+    if (p->jump_req && !p->air) { p->air = 1; p->vy = JUMP_SPEED; p->pos.y = ground_y + 0.01f; }
+    p->jump_req = 0;
+    if (p->air) {
+        p->vy -= GRAVITY * dt;
+        p->pos.y += p->vy * dt;
+        if (p->pos.y <= ground_y && p->vy < 0) { p->pos.y = ground_y; p->air = 0; p->vy = 0; }
+        p->sliding = 0;
+    } else {
+        p->pos.y = ground_y;
+    }
 
     /* face the direction of travel, taking the shortest turn */
-    if (sp > 0.4f) {
+    if (p->yaw_drive) {
+        p->yaw += p->yaw_rate * dt; /* a turn clip is rotating the body */
+    } else if (sp > 0.4f) {
         float target = atan2f(p->vx, -p->vz);
         float d = target - p->yaw;
         while (d > PI_F) d -= 2.0f * PI_F;

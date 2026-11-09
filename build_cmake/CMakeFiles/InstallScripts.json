@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/Code Dump/FX-Framwork/build_cmake/cmake_install.cmake",
+		"D:/Code Dump/FX-Framwork/build_cmake/third_party/CUI/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

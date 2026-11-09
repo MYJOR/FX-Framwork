@@ -85,9 +85,9 @@ void main() {
 
     // --- wind ripples: fine ridges perpendicular to the wind, fading with distance
     float ripFade = (1.0 - smoothstep(20.0, 110.0, dist)) * (1.0 - trailDisturb);
-    float ph = dot(vWorld.xz, WIND) * 2.6 + vnoise(vWorld.xz * 0.45) * 5.0;
+    float ph = dot(vWorld.xz, WIND) * 7.8 + vnoise(vWorld.xz * 1.35) * 5.0;
     float rip = cos(ph) + 0.5 * cos(ph * 2.1 + 1.3);
-    vec2 g1 = vec2(vnoise(vWorld.xz * 9.0 + 3.1) - vnoise(vWorld.xz * 9.0 - 3.1));
+    vec2 g1 = vec2(vnoise(vWorld.xz * 27.0 + 3.1) - vnoise(vWorld.xz * 27.0 - 3.1));
     N = normalize(N + vec3(WIND.x, 0.0, WIND.y) * rip * 0.07 * ripFade
                     + vec3(g1.x, 0.0, g1.y) * 0.05 * (1.0 - smoothstep(10.0, 60.0, dist)));
     // height gradient tilts the normal: n ~ (-dh/dx, 1, -dh/dz)
@@ -96,7 +96,7 @@ void main() {
     // --- base colour: warm gold with large-scale variation
     float tint = vnoise(vWorld.xz * 0.012);
     vec3 sand = mix(vec3(0.78, 0.46, 0.24), vec3(0.93, 0.68, 0.38), tint);
-    sand *= 0.92 + 0.16 * vnoise(vWorld.xz * 0.3);
+    sand *= 0.92 + 0.16 * vnoise(vWorld.xz * 1.0);
     sand *= 1.0 - 0.30 * trailDepth; // disturbed sand is darker and denser
 
     // --- diffuse with wrap, warm sun, cool-saturated shadow side
@@ -140,7 +140,7 @@ void main() {
     vec2 px = fwidth(vWorld.xz);
     float lit = smoothstep(0.0, 0.15, ndl);
     float glitter = 0.0;
-    float scales[3] = float[3](10.0, 40.0, 160.0);
+    float scales[3] = float[3](30.0, 120.0, 480.0);
     for (int i = 0; i < 3; i++) {
         float cellPx = (1.0 / scales[i]) / max(max(px.x, px.y), 1e-5); // cell size in pixels
         float fade = smoothstep(1.2, 3.5, cellPx) * (1.0 - smoothstep(60.0, 200.0, cellPx));
@@ -151,7 +151,7 @@ void main() {
     // --- gust-driven drifting sand sheets hugging the surface
     float gu = gust(vWorld.xz, uTime);
     vec2 sp = vec2(dot(vWorld.xz, WIND) - uTime * (6.0 + 10.0 * gu), dot(vWorld.xz, vec2(-WIND.y, WIND.x)));
-    float streak = vnoise(vec2(sp.x * 0.30, sp.y * 2.0)) * vnoise(vec2(sp.x * 0.09 + 4.0, sp.y * 0.45));
+    float streak = vnoise(vec2(sp.x * 0.60, sp.y * 4.0)) * vnoise(vec2(sp.x * 0.18 + 4.0, sp.y * 0.9));
     streak = smoothstep(0.22, 0.65, streak);
     float lowAngle = 1.0 - clamp(V.y * 1.6, 0.0, 1.0);
     vec3 blown = sand * vec3(1.15, 1.02, 0.88) + sun * 0.12;

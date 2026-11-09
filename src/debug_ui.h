@@ -25,6 +25,9 @@ typedef struct {
     float time;
     float *sun_elevation, *sun_azimuth, *fov; /* radians; edited in place */
     int trail_dirty_bytes;
+    const char *mm_clip;         /* motion matching: clip currently playing (NULL = speed blend) */
+    float mm_time;
+    int airborne;
     float anim_w[4];             /* idle, walk, jog, sprint blend weights */
 } DebugWorld;
 

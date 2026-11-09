@@ -233,8 +233,14 @@ static void tab_world(DebugState *s, DebugWorld *w) {
     kv("Ground height", "%.2f m", w->terrain_h);
     kv("Slope", "%.1f deg", w->slope_deg);
     kv("Sliding", "%s", w->sliding ? "yes" : "no");
-    kv("Anim idle/walk", "%.2f / %.2f", w->anim_w[0], w->anim_w[1]);
-    kv("Anim jog/sprint", "%.2f / %.2f", w->anim_w[2], w->anim_w[3]);
+    kv("Airborne", "%s", w->airborne ? "yes" : "no");
+    if (w->mm_clip) {
+        kv("Motion match", "%s", w->mm_clip);
+        kv("Clip time", "%.2f s", w->mm_time);
+    } else {
+        kv("Anim idle/walk", "%.2f / %.2f", w->anim_w[0], w->anim_w[1]);
+        kv("Anim jog/sprint", "%.2f / %.2f", w->anim_w[2], w->anim_w[3]);
+    }
     cui_separator(g_ui);
     cui_label(g_ui, "Camera");
     kv("Mode", "%s", w->free_cam ? "free (F)" : "chase (F)");
