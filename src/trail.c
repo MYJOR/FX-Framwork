@@ -173,7 +173,15 @@ static void stamp(Trail *t, float x, float z, float yaw, float half_w, float hal
     }
 }
 
-/* One footprint: heel and toe pressed separately, a little random variation,
+static void push_event(Trail *t, const Player *p, float x, float z, int kind) {
+    if (t->ev_count >= TRAIL_MAX_EVENTS) return;
+    float sp = p->speed > 1e-3f ? p->speed : 1.0f;
+    TrailEvent *e = &t->ev[t->ev_count++];
+    e->x = x; e->z = z; e->dx = p->vx / sp; e->dz = p->vz / sp; e->speed = p->speed; e->kind = kind;
+}
+
+/* One footprint:
+ heel and toe pressed separately, a little random variation,
    and a small mound of sand pushed up behind the toe-off. */
 static void footprint(Trail *t, const Player *p, float px, float pz, int side) {
     float run = clampf(p->speed / 7.5f, 0.0f, 1.0f);
@@ -192,6 +200,7 @@ static void footprint(Trail *t, const Player *p, float px, float pz, int side) {
     /* ball/toe: wider, lighter */
     stamp(t, cx + fx * 0.11f, cz + fz * 0.11f, yaw, FOOT_HALF_W * 0.95f * size, FOOT_HALF_L * 0.55f * size,
           FOOT_DEPTH * 0.65f * press, 0.35f);
+    push_event(t, p, cx, cz, 0);
     /* sand shoved backwards by the push-off */
     bump(t, cx - fx * (0.30f + 0.10f * run), cz - fz * (0.30f + 0.10f * run), yaw,
          0.09f * size, 0.10f + 0.10f * run, 0.45f + 0.35f * run);
@@ -218,6 +227,7 @@ static void groove(Trail *t, const Player *p, float px, float pz, float path) {
     float n = path_noise(path, 0.0f);
     float w = 0.24f + 0.06f * n + 0.02f * rnd_s(t);
     stamp(t, px, pz, yaw, w, 0.14f, 0.42f + 0.18f * n, 0.40f + 0.30f * n);
+    if (rnd(t) < 0.7f) push_event(t, p, px, pz, 1);
 }
 
 typedef void (*StampFn)(Trail *, const Player *, float, float, float);
@@ -245,6 +255,7 @@ static void foot_fn(Trail *t, const Player *p, float x, float z, float path) {
 
 void trail_update(Trail *t, const Player *p, float dt, float time) {
     if (!t->rng) t->rng = 2463534242u;
+    t->ev_count = 0;
     recenter(t, p->pos.x, p->pos.z);
 
     /* wind fills the tracks back in, much faster inside a gust; sand also slumps */
@@ -283,10 +294,13 @@ void trail_update(Trail *t, const Player *p, float dt, float time) {
     /* upload only what changed */
     glBindTexture(GL_TEXTURE_2D, t->tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    t->upload_bytes = 0;
     if (t->dirty_full) {
+        t->upload_bytes = TRAIL_N * TRAIL_N * 2;
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, TRAIL_N, TRAIL_N, GL_RG, GL_UNSIGNED_BYTE, t->data);
     } else if (t->dirty_row_max >= t->dirty_row_min) {
         int rows = t->dirty_row_max - t->dirty_row_min + 1;
+        t->upload_bytes = rows * TRAIL_N * 2;
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, t->dirty_row_min, TRAIL_N, rows, GL_RG, GL_UNSIGNED_BYTE,
                         t->data + (size_t)t->dirty_row_min * TRAIL_N * 2);
     }

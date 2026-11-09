@@ -5,7 +5,8 @@
 #define PI_F 3.14159265f
 
 /* Tuning: all feel lives here. */
-#define WALK_SPEED 4.5f
+#define STROLL_SPEED 1.9f       /* gait 2: walk */
+#define WALK_SPEED 4.5f         /* gait 0: jog (default) */
 #define RUN_SPEED 7.5f
 #define GROUND_FOLLOW 7.0f      /* how fast velocity catches up with input */
 #define SLIDE_START_NY 0.84f    /* terrain normal.y below this starts sliding (~33 deg, sand repose angle) */
@@ -62,7 +63,7 @@ void player_init(Player *p, float x, float z) {
     p->pos = v3(x, terrain_height(x, z), z);
     p->vx = p->vz = 0;
     p->yaw = 0;
-    p->lean = 0;
+    p->lean = p->lean_vel = p->fwd_prev = p->accel_f = 0;
     p->speed = 0;
     p->sliding = 0;
     build_capsule(p);
@@ -86,7 +87,7 @@ void player_update(Player *p, float dt, float mx, float mz, int run) {
     /* walking uphill is slower, and impossible on slip faces */
     float uphill = mag > 0 ? -(mx * dhx + mz * dhz) / mag : 0.0f; /* +1 straight up the slope */
     float slope_slow = 1.0f - clampf(uphill, 0.0f, 1.0f) * (0.35f + 0.65f * steep);
-    float top_speed = (run ? RUN_SPEED : WALK_SPEED) * slope_slow;
+    float top_speed = (run == 1 ? RUN_SPEED : (run == 2 ? STROLL_SPEED : WALK_SPEED)) * slope_slow;
 
     float tx = mx * top_speed, tz = mz * top_speed;
     /* control fades as the slope takes over */
@@ -116,8 +117,26 @@ void player_update(Player *p, float dt, float mx, float mz, int run) {
         p->yaw += d * clampf(dt * TURN_RATE, 0.0f, 1.0f);
     }
 
-    float lean_target = clampf(sp * 0.035f, 0.0f, 0.30f) + (p->sliding ? 0.15f * steep : 0.0f);
-    p->lean += (lean_target - p->lean) * clampf(dt * 8.0f, 0.0f, 1.0f);
+    /* Tilt target (+ forward, - backward):
+     *  - speed: lean into the run
+     *  - acceleration along the facing: pitch forward when pushing off, rock back when braking
+     *  - slope along the facing: lean into climbs, lean back descending */
+    float fx = sinf(p->yaw), fz = -cosf(p->yaw);
+    float fwd = p->vx * fx + p->vz * fz;               /* signed speed along facing */
+    float acc = dt > 1e-5f ? (fwd - p->fwd_prev) / dt : 0.0f;
+    p->fwd_prev = fwd;
+    p->accel_f += (acc - p->accel_f) * clampf(dt * 10.0f, 0.0f, 1.0f);
+
+    float rise = -(n.x * fx + n.z * fz) / (n.y > 0.2f ? n.y : 0.2f); /* + = uphill ahead */
+    float speed_lean = clampf(fwd * 0.03f, 0.0f, 0.24f);
+    float accel_lean = clampf(p->accel_f * 0.028f, -0.32f, 0.32f);
+    float slope_lean = clampf(rise * 0.7f, -0.30f, 0.30f) * clampf(sp / 2.0f, 0.0f, 1.0f);
+    float lean_target = clampf(speed_lean + accel_lean + slope_lean, -0.5f, 0.55f);
+
+    /* underdamped spring so the body overshoots a little and settles */
+    p->lean_vel += (170.0f * (lean_target - p->lean) - 16.0f * p->lean_vel) * dt;
+    p->lean += p->lean_vel * dt;
+    p->lean = clampf(p->lean, -0.6f, 0.65f);
 }
 
 M4 player_model(const Player *p) {

@@ -11,6 +11,9 @@
 #include "wind.h"
 #include "player.h"
 #include "trail.h"
+#include "character.h"
+#include "diag.h"
+#include "debug_ui.h"
 
 #define PI 3.14159265f
 
@@ -55,7 +58,18 @@ static void save_screenshot(const char *path, int w, int h) {
     free(px); free(flipped);
 }
 
-static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+/* Footsteps and slide grooves throw sand into the air. */
+static void emit_trail_events(Particles *ps, const Trail *tr) {
+    for (int i = 0; i < tr->ev_count; i++) {
+        const TrailEvent *e = &tr->ev[i];
+        float y = terrain_height(e->x, e->z);
+        if (e->kind == 0) particles_emit_step(ps, e->x, y, e->z, e->dx, e->dz, e->speed);
+        else particles_emit_spray(ps, e->x, y, e->z, e->dx, e->dz, e->speed);
+    }
+}
+
+static float clampf(float v, float lo, float hi)
+ { return v < lo ? lo : (v > hi ? hi : v); }
 
 int main(int argc, char **argv) {
     const char *shot = NULL;
@@ -66,6 +80,7 @@ int main(int argc, char **argv) {
     float sim_seconds = 0.0f;   /* --walk: simulate this long with forward input before the shot */
     float orbit_after = 0.0f;  /* --orbit: rotate the camera this many degrees after the --walk sim */
     int run_shot = 0, free_cam_shot = 0, win_w = 1280, win_h = 720;
+    int ui_mode = 0, ui_tab = 0, ui_view = 0, ui_wire = 0, ui_pause = 0; /* --ui, --tab, --view, --wire, --pause */
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
@@ -76,7 +91,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--walk") && i + 1 < argc) sim_seconds = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--orbit") && i + 1 < argc) orbit_after = (float)atof(argv[++i]) * PI / 180.0f;
         else if (!strcmp(argv[i], "--run")) run_shot = 1;
+        else if (!strcmp(argv[i], "--stroll")) run_shot = 2;
         else if (!strcmp(argv[i], "--free")) free_cam_shot = 1;
+        else if (!strcmp(argv[i], "--ui") && i + 1 < argc) ui_mode = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--tab") && i + 1 < argc) ui_tab = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--view") && i + 1 < argc) ui_view = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--wire")) ui_wire = 1;
+        else if (!strcmp(argv[i], "--pause")) ui_pause = 1;
         else if (!strcmp(argv[i], "--pos") && i + 2 < argc) {
             start.x = (float)atof(argv[++i]); start.z = (float)atof(argv[++i]);
         }
@@ -88,6 +109,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    diag_init();
+    DebugState dbg;
+    if (!debug_ui_init(&dbg)) fprintf(stderr, "debug overlay disabled\n");
+    platform_set_event_hook(debug_ui_event, NULL);
+    dbg.overlay = ui_mode; dbg.tab = ui_tab; dbg.view_mode = ui_view < DEBUG_VIEW_COUNT ? ui_view : 0;
+    dbg.wireframe = ui_wire;
+    int fkey_was[12] = {0}, rmb_on_ui = 0;
     /* find the shader directory regardless of where the exe is launched from */
     const char *dirs[] = {"shaders", "../shaders", "../../shaders"};
     FILE *probe = NULL;
@@ -98,11 +126,13 @@ int main(int argc, char **argv) {
         if (probe) { shader_set_dir(dirs[i]); fclose(probe); }
     }
 
-    Program sky = {0}, sand = {0}, part = {0}, body = {0};
+    Program sky = {0}, sand = {0}, part = {0}, body = {0}, dust = {0}, chp = {0};
     if (!shader_program_load(&sky, "sky.vert", "sky.frag") ||
         !shader_program_load(&sand, "sand.vert", "sand.frag") ||
         !shader_program_load(&part, "particle.vert", "particle.frag") ||
-        !shader_program_load(&body, "capsule.vert", "capsule.frag")) {
+        !shader_program_load(&body, "capsule.vert", "capsule.frag") ||
+        !shader_program_load(&dust, "dust.vert", "dust.frag") ||
+        !shader_program_load(&chp, "char.vert", "char.frag")) {
         fprintf(stderr, "shader load failed\n");
         return 1;
     }
@@ -115,6 +145,21 @@ int main(int argc, char **argv) {
     Player player;
     player_init(&player, start.x, start.z);
 
+    /* animated character (falls back to the capsule if the asset is missing) */
+    static Character character;
+    int have_char = 0;
+    {
+        const char *adirs[] = {"assets", "../assets", "../../assets"};
+        for (int i = 0; i < 3 && !have_char; i++) {
+            char path[300];
+            snprintf(path, sizeof path, "%s/UAL1.glb", adirs[i]);
+            FILE *pf = fopen(path, "rb");
+            if (!pf) continue;
+            fclose(pf);
+            have_char = character_load(&character, path);
+        }
+        if (!have_char) fprintf(stderr, "character asset not loaded, using capsule\n");
+    }
     static Trail trail;
     trail_init(&trail, player.pos);
 
@@ -133,7 +178,10 @@ int main(int argc, char **argv) {
         V3 f = cam_forward(cc.yaw, 0);
         for (float t = 0; t < sim_seconds; t += 1.0f / 60.0f)
         { player_update(&player, 1.0f / 60.0f, f.x, f.z, run_shot);
-          trail_update(&trail, &player, 1.0f / 60.0f, time_offset + t); }
+          trail_update(&trail, &player, 1.0f / 60.0f, time_offset + t);
+          emit_trail_events(&particles, &trail);
+          if (have_char) character_update(&character, 1.0f / 60.0f, player.speed);
+          particles_update(&particles, 1.0f / 60.0f, player.pos, time_offset + t); }
         cc.target = v3_add(player.pos, v3(0, 1.3f, 0));
         cc.yaw += orbit_after;
     }
@@ -141,8 +189,13 @@ int main(int argc, char **argv) {
     double last = platform_time(), reload_timer = 0;
     int frame = 0;
 
+    int shot_frame = (shot && dbg.overlay) ? 40 : 4; /* the overlay and GPU timers need a few frames to settle */
     while (!plat.quit) {
+        diag_frame_begin();
+        diag_zone_begin("Frame");
+        diag_zone_begin("Poll");
         platform_poll(&plat);
+        diag_zone_end();
         double now = platform_time();
         float dt = (float)(now - last);
         last = now;
@@ -150,6 +203,24 @@ int main(int argc, char **argv) {
         float time = (float)now + time_offset;
 
         if (plat.keys[VK_ESCAPE]) break;
+
+        /* debug hotkeys (edge triggered) */
+        for (int k = 0; k < 5; k++) {
+            int down = plat.keys[VK_F1 + k];
+            if (down && !fkey_was[k]) {
+                if (k == 0) dbg.overlay = (dbg.overlay + 1) % 3;
+                if (k == 1) diag_set_paused(!diag_paused());
+                if (k == 2) dbg.wireframe = !dbg.wireframe;
+                if (k == 3) dbg.view_mode = (dbg.view_mode + 1) % DEBUG_VIEW_COUNT;
+                if (k == 4) { dbg.vsync = !dbg.vsync; platform_set_vsync(dbg.vsync); }
+            }
+            fkey_was[k] = down;
+        }
+        if (ui_pause && frame == shot_frame - 3) diag_set_paused(1);
+
+        /* a right-drag that starts on the panel belongs to the UI, not the camera */
+        if (!plat.rmb) rmb_on_ui = debug_ui_wants_mouse(&dbg);
+        if (rmb_on_ui) plat.mouse_dx = plat.mouse_dy = 0;
 
         /* F toggles free camera (debug) */
         if (plat.keys['F'] && !f_was_down) {
@@ -191,8 +262,13 @@ int main(int argc, char **argv) {
             if (plat.keys['S']) { ix -= f.x; iz -= f.z; }
             if (plat.keys['D']) { ix += cam_right.x; iz += cam_right.z; }
             if (plat.keys['A']) { ix -= cam_right.x; iz -= cam_right.z; }
-            player_update(&player, dt, ix, iz, plat.keys[VK_SHIFT]);
+            diag_zone_begin("Sim:Player");
+            player_update(&player, dt, ix, iz, plat.keys[VK_SHIFT] ? 1 : (plat.keys[VK_CONTROL] ? 2 : 0));
+            diag_zone_end();
+            diag_zone_begin("Sim:Trail");
             trail_update(&trail, &player, dt, time);
+            emit_trail_events(&particles, &trail);
+            diag_zone_end();
 
             /* smoothed target, then place the eye behind it along the orbit direction */
             V3 want = v3_add(player.pos, v3(0, 1.3f, 0));
@@ -206,6 +282,10 @@ int main(int argc, char **argv) {
             view_fwd = v3_norm(v3_add(cc.target, v3_scale(eye, -1.0f)));
         }
 
+        diag_zone_begin("Sim:Animation");
+        if (have_char) character_update(&character, dt, free_mode ? 0.0f : player.speed);
+        diag_zone_end();
+
         reload_timer += dt;
         if (reload_timer > 0.5) {
             reload_timer = 0;
@@ -213,6 +293,8 @@ int main(int argc, char **argv) {
             shader_reload_if_changed(&sand);
             shader_reload_if_changed(&part);
             shader_reload_if_changed(&body);
+            shader_reload_if_changed(&dust);
+            shader_reload_if_changed(&chp);
         }
 
         V3 right = v3_norm(v3_cross(view_fwd, v3(0, 1, 0)));
@@ -226,6 +308,8 @@ int main(int argc, char **argv) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         /* sky: fullscreen triangle, no depth */
+        diag_zone_begin("Draw:Sky");
+        diag_gpu_begin(GPU_SKY);
         glDisable(GL_DEPTH_TEST);
         glUseProgram(sky.id);
         common_uniforms(sky.id, &scene, cam, time);
@@ -236,26 +320,65 @@ int main(int argc, char **argv) {
         set1f(sky.id, "uAspect", aspect);
         glBindVertexArray(empty_vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
+        diag_count_draw(1);
+        diag_gpu_end(GPU_SKY);
+        diag_zone_end();
 
         /* terrain */
+        diag_zone_begin("Draw:Terrain");
+        diag_gpu_begin(GPU_TERRAIN);
         glEnable(GL_DEPTH_TEST);
-        glUseProgram(sand.id);
-        common_uniforms(sand.id, &scene, cam, time);
-        set3f(sand.id, "uPlayerPos", player.pos);
-        glUniformMatrix4fv(glGetUniformLocation(sand.id, "uViewProj"), 1, GL_FALSE, vp.m);
-        trail_bind(&trail);
-        terrain_draw(&terrain);
+        if (dbg.draw_terrain) {
+            glUseProgram(sand.id);
+            common_uniforms(sand.id, &scene, cam, time);
+            set3f(sand.id, "uPlayerPos", player.pos);
+            glUniform1i(glGetUniformLocation(sand.id, "uDebugView"), dbg.view_mode);
+            glUniformMatrix4fv(glGetUniformLocation(sand.id, "uViewProj"), 1, GL_FALSE, vp.m);
+            trail_bind(&trail);
+            if (dbg.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            terrain_draw(&terrain);
+            if (dbg.wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            diag_count_draw(terrain.index_count / 3);
+        }
+        diag_gpu_end(GPU_TERRAIN);
+        diag_zone_end();
 
         /* player */
-        glUseProgram(body.id);
-        common_uniforms(body.id, &scene, cam, time);
-        glUniformMatrix4fv(glGetUniformLocation(body.id, "uViewProj"), 1, GL_FALSE, vp.m);
-        M4 model = player_model(&player);
-        glUniformMatrix4fv(glGetUniformLocation(body.id, "uModel"), 1, GL_FALSE, model.m);
-        player_draw(&player);
+        diag_zone_begin("Draw:Player");
+        diag_gpu_begin(GPU_PLAYER);
+        if (dbg.draw_player) {
+            if (have_char) {
+                /* the model faces +Z; the game's forward is -Z. Only a hint of the capsule tilt: the clips carry the lean. */
+                M4 model = m4_mul(m4_translate(player.pos), m4_rotate_y(-player.yaw + PI));
+                model = m4_mul(model, m4_rotate_x(player.lean * 0.35f));
+                float sc = 1.75f / character.height; /* normalise to a 1.75 m person */
+                for (int k = 0; k < 12; k++) model.m[k] *= sc;
+                glUseProgram(chp.id);
+                common_uniforms(chp.id, &scene, cam, time);
+                glUniformMatrix4fv(glGetUniformLocation(chp.id, "uViewProj"), 1, GL_FALSE, vp.m);
+                glUniformMatrix4fv(glGetUniformLocation(chp.id, "uModel"), 1, GL_FALSE, model.m);
+                character_draw(&character, chp.id);
+                diag_count_draw(character.index_count / 3);
+            } else {
+                glUseProgram(body.id);
+                common_uniforms(body.id, &scene, cam, time);
+                glUniformMatrix4fv(glGetUniformLocation(body.id, "uViewProj"), 1, GL_FALSE, vp.m);
+                M4 model = player_model(&player);
+                glUniformMatrix4fv(glGetUniformLocation(body.id, "uModel"), 1, GL_FALSE, model.m);
+                player_draw(&player);
+                diag_count_draw(player.index_count / 3);
+            }
+        }
+        diag_gpu_end(GPU_PLAYER);
+        diag_zone_end();
 
         /* wind-blown sand follows the player, so gusts are always around them */
+        diag_zone_begin("Sim:Particles");
         particles_update(&particles, dt, player.pos, time);
+        diag_zone_end();
+        diag_zone_begin("Draw:Particles");
+        diag_gpu_begin(GPU_PARTICLES);
+        particles.skip_streaks = !dbg.draw_streaks;
         glUseProgram(part.id);
         common_uniforms(part.id, &scene, cam, time);
         glUniformMatrix4fv(glGetUniformLocation(part.id, "uViewProj"), 1, GL_FALSE, vp.m);
@@ -263,15 +386,57 @@ int main(int argc, char **argv) {
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
         particles_draw(&particles, cam, time);
+
+        /* soft dust puffs as point sprites */
+        glUseProgram(dust.id);
+        common_uniforms(dust.id, &scene, cam, time);
+        glUniformMatrix4fv(glGetUniformLocation(dust.id, "uViewProj"), 1, GL_FALSE, vp.m);
+        set1f(dust.id, "uPixelScale", (float)plat.height / (2.0f * tanf(scene.fov * 0.5f)));
+        glEnable(GL_PROGRAM_POINT_SIZE);
+        if (dbg.draw_dust) particles_draw_dust(&particles);
+        glDisable(GL_PROGRAM_POINT_SIZE);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
+        diag_count_draw(0);                              /* streaks */
+        if (dbg.draw_dust && particles.dust_count > 0) diag_count_draw(0); /* dust points */
+        diag_gpu_end(GPU_PARTICLES);
+        diag_zone_end();
+
+        DiagCounters dc = {0};
+        dc.particles_ambient = PARTICLE_COUNT;
+        dc.particles_kick = particles.kick_grains;
+        dc.particles_dust = particles.dust_count;
+        dc.trail_upload_bytes = trail.upload_bytes;
+        diag_counter_set(&dc);
+
+        /* diagnostics overlay (last, over the finished scene) */
+        {
+            V3 n = terrain_normal(player.pos.x, player.pos.z);
+            DebugWorld dw = {0};
+            dw.pos[0] = player.pos.x; dw.pos[1] = player.pos.y; dw.pos[2] = player.pos.z;
+            dw.speed = player.speed;
+            dw.terrain_h = terrain_height(player.pos.x, player.pos.z);
+            dw.slope_deg = acosf(clampf(n.y, -1.0f, 1.0f)) * 180.0f / PI;
+            dw.gust = wind_gust(player.pos.x, player.pos.z, time);
+            dw.sliding = player.sliding; dw.free_cam = free_mode;
+            dw.cam[0] = cam.x; dw.cam[1] = cam.y; dw.cam[2] = cam.z;
+            dw.time = time;
+            if (have_char) for (int k = 0; k < 4; k++) dw.anim_w[k] = character.w[k];
+            dw.sun_elevation = &scene.sun_elevation; dw.sun_azimuth = &scene.sun_azimuth; dw.fov = &scene.fov;
+            debug_ui_frame(&dbg, &dw, plat.width, plat.height, dt);
+        }
 
         frame++;
-        if (shot && frame == 4) {
+        diag_zone_end(); /* Frame */
+        diag_cpu_done();
+        if (shot && frame == shot_frame) {
             save_screenshot(shot, plat.width, plat.height);
             break;
         }
+        diag_zone_begin("Swap");
         platform_swap(&plat);
+        diag_zone_end();
     }
+    debug_ui_shutdown();
     return 0;
 }

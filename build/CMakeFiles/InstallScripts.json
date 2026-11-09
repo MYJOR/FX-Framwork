@@ -1,7 +1,8 @@
 {
 	"InstallScripts" : 
 	[
-		"D:/2026/Code Dump/gd_FX Framwork/build/cmake_install.cmake"
+		"D:/2026/Code Dump/gd_FX Framwork/build/cmake_install.cmake",
+		"D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

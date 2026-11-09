@@ -16,6 +16,10 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #define GL_STATIC_DRAW 0x88E4
 #define GL_STREAM_DRAW 0x88E0
+#define GL_PROGRAM_POINT_SIZE 0x8642
+#define GL_TIME_ELAPSED 0x88BF
+#define GL_QUERY_RESULT 0x8866
+#define GL_QUERY_RESULT_AVAILABLE 0x8867
 
 /* X(return type, name, args) */
 #define GL_FUNCS(X) \
@@ -43,7 +47,14 @@ typedef ptrdiff_t GLsizeiptr;
     X(void, BindBuffer, (GLenum, GLuint)) \
     X(void, BufferData, (GLenum, GLsizeiptr, const void *, GLenum)) \
     X(void, VertexAttribPointer, (GLuint, GLint, GLenum, GLboolean, GLsizei, const void *)) \
-    X(void, EnableVertexAttribArray, (GLuint))
+    X(void, EnableVertexAttribArray, (GLuint)) \
+    X(void, Uniform1i, (GLint, GLint)) \
+    X(void, GenQueries, (GLsizei, GLuint *)) \
+    X(void, DeleteQueries, (GLsizei, const GLuint *)) \
+    X(void, BeginQuery, (GLenum, GLuint)) \
+    X(void, EndQuery, (GLenum)) \
+    X(void, GetQueryObjectiv, (GLuint, GLenum, GLint *)) \
+    X(void, GetQueryObjectui64v, (GLuint, GLenum, unsigned long long *))
 
 #define X(ret, name, args) typedef ret(APIENTRY *PFN_gl##name) args; extern PFN_gl##name gl##name;
 GL_FUNCS(X)

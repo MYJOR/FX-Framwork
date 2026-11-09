@@ -3629,3 +3629,35 @@ events:
       Running the C compiler's linker: "Configured with: ../configure --prefix=/R/winlibs_staging_ucrt64/inst_gcc-15.2.0/share/gcc --build=x86_64-w64-mingw32 --host=x86_64-w64-mingw32 --enable-offload-targets=nvptx-none --with-pkgversion='MinGW-W64 x86_64-ucrt-posix-seh, built by Brecht Sanders, r6' --with-tune=generic --enable-checking=release --enable-threads=posix --disable-sjlj-exceptions --disable-libunwind-exceptions --disable-serial-configure --disable-bootstrap --enable-host-shared --enable-plugin --disable-default-ssp --disable-rpath --disable-libstdcxx-debug --disable-version-specific-runtime-libs --disable-symvers --enable-languages=c,c++,fortran,lto,objc,obj-c++ --disable-gold --disable-nls --disable-stage1-checking --disable-win32-registry --disable-multilib --enable-ld --enable-libquadmath --enable-libada --enable-libssp --enable-libstdcxx --enable-lto --enable-fully-dynamic-string --enable-libgomp --enable-graphite --enable-mingw-wildcard --enable-libstdcxx-time --enable-libstdcxx-pch --with-mpc=/c/Prog/winlibs_staging_ucrt/custombuilt64 --with-mpfr=/c/Prog/winlibs_staging_ucrt/custombuilt64 --with-gmp=/c/Prog/winlibs_staging_ucrt/custombuilt64 --with-isl=/c/Prog/winlibs_staging_ucrt/custombuilt64 --disable-libstdcxx-backtrace --enable-install-libiberty --enable-__cxa_atexit --without-included-gettext --with-diagnostics-color=auto --enable-clocale=generic --enable-libgdiagnostics --with-libiconv --with-system-zlib --with-build-sysroot=/R/winlibs_staging_ucrt64/gcc-15.2.0/build_mingw/mingw-w64 CFLAGS='-I/c/Prog/winlibs_staging_ucrt/custombuilt64/include/libdl-win32   -march=nocona -msahf -mtune=generic -O2 -Wno-error=format' CXXFLAGS='-Wno-int-conversion  -march=nocona -msahf -mtune=generic -O2' LDFLAGS='-pthread -Wl,--no-insert-timestamp -Wl,--dynamicbase -Wl,--high-entropy-va -Wl,--nxcompat -Wl,--tsaware' LD=/c/Prog/winlibs_staging_ucrt/custombuilt64/share/binutils/bin/ld.exe" "--version"
       
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Users/hp/AppData/Roaming/Python/Python313/site-packages/cmake/data/share/cmake-4.3/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Users/hp/AppData/Roaming/Python/Python313/site-packages/cmake/data/share/cmake-4.3/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "C:/Users/hp/AppData/Roaming/Python/Python313/site-packages/cmake/data/share/cmake-4.3/Modules/FindThreads.cmake:160 (check_c_source_compiles)"
+      - "C:/Users/hp/AppData/Roaming/Python/Python313/site-packages/cmake/data/share/cmake-4.3/Modules/FindThreads.cmake:226 (_threads_check_libc)"
+      - "third_party/CUI/CMakeLists.txt:174 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/CMakeScratch/TryCompile-a1kvsn"
+      binary: "D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/CMakeScratch/TryCompile-a1kvsn"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/CMakeScratch/TryCompile-a1kvsn'
+        
+        Run Build Command(s): C:/Users/hp/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/ninja.exe -v cmTC_86bd5
+        [1/2] C:\\Users\\hp\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\gcc.exe -DCMAKE_HAVE_LIBC_PTHREAD  -std=gnu11 -o CMakeFiles/cmTC_86bd5.dir/src.c.obj -c "D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/CMakeScratch/TryCompile-a1kvsn/src.c"
+        [2/2] C:\\Windows\\system32\\cmd.exe /C "cd . && C:\\Users\\hp\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\gcc.exe   CMakeFiles/cmTC_86bd5.dir/src.c.obj -o cmTC_86bd5.exe -Wl,--out-implib,libcmTC_86bd5.dll.a -Wl,--major-image-version,0,--minor-image-version,0  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 && cd ."
+        
+      exitCode: 0
+...

@@ -1,3 +1,14 @@
 D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/desert.dir
 D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/edit_cache.dir
 D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/rebuild_cache.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/list_install_components.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/install.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/install/local.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/install/strip.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/cui.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/edit_cache.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/rebuild_cache.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/list_install_components.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/install.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/install/local.dir
+D:/2026/Code Dump/gd_FX Framwork/build/third_party/CUI/CMakeFiles/install/strip.dir

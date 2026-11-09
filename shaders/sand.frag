@@ -18,6 +18,7 @@ float glitterLayer(vec2 wp, float scale, vec3 N, vec3 H, float fade) {
 }
 
 uniform vec3 uPlayerPos; // feet position of the player
+uniform int uDebugView;  // diagnostic view mode, 0 = final image
 uniform sampler2D uTrail; // footprints/trails: R = depression, G = raised rim (see trail.c)
 const float TRAIL_SIZE = 64.0;
 const float TRAIL_TEXELS = 2048.0;
@@ -163,4 +164,25 @@ void main() {
     col = mix(col, hazeColor(-V), edge);
 
     outColor = vec4(grade(col), 1.0);
+
+    // --- debug views (diagnostic overlay): 0 final, 1 normals, 2 trail map, 3 slide zones, 4 wind gust, 5 overdraw-ish distance
+    if (uDebugView == 1) {
+        outColor = vec4(N * 0.5 + 0.5, 1.0);
+    } else if (uDebugView == 2) {
+        vec3 g = vec3(0.05) + sand * 0.12;
+        vec2 tc = texture(uTrail, vWorld.xz / TRAIL_SIZE).rg;
+        g += vec3(1.0, 0.25, 0.1) * tc.r * tfade + vec3(0.2, 0.7, 1.0) * tc.g * tfade;
+        outColor = vec4(g, 1.0);
+    } else if (uDebugView == 3) {
+        float ny = normalize(vNormal).y;
+        vec3 z = mix(vec3(0.15, 0.7, 0.25), vec3(0.95, 0.8, 0.1), smoothstep(0.90, 0.84, ny));
+        z = mix(z, vec3(0.9, 0.15, 0.1), smoothstep(0.84, 0.55, ny));
+        outColor = vec4(z * (0.55 + 0.45 * max(dot(normalize(vNormal), L), 0.0)), 1.0);
+    } else if (uDebugView == 4) {
+        float gg = gust(vWorld.xz, uTime);
+        outColor = vec4(mix(vec3(0.05, 0.1, 0.35), vec3(1.0, 0.85, 0.2), gg), 1.0);
+    } else if (uDebugView == 5) {
+        float d = clamp(dist / 400.0, 0.0, 1.0);
+        outColor = vec4(vec3(1.0 - d), 1.0);
+    }
 }
