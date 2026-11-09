@@ -26,7 +26,9 @@ add_executable(desert
   src/png.c
   src/diag.c
   src/debug_ui.c
-  src/gamepad.c)
+  src/gamepad.c
+  src/coins.c
+  src/beam.c)
 
 target_include_directories(desert SYSTEM PRIVATE third_party/cgltf)
 target_compile_options(desert PRIVATE -Wall -Wextra -O2)

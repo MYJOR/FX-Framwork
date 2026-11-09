@@ -3,6 +3,9 @@
 #include <windowsx.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
 
 #define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
@@ -23,7 +26,23 @@ static PFN_wglSwapIntervalEXT g_swap_interval;
 
 static void emit(const PlatEvent *e) { if (g_hook) g_hook(g_hook_user, e); }
 void platform_set_event_hook(PlatEventFn fn, void *user) { g_hook = fn; g_hook_user = user; }
-void platform_set_vsync(int on) { if (g_swap_interval) g_swap_interval(on ? 1 : 0); }
+static double g_refresh_per_frame = 2.0;
+static int g_vsync_interval = 1; /* vblanks per frame: refresh rate / target fps, so 60 Hz -> 2 for an even 30 fps */
+static int g_vsync_on = 1;
+typedef HRESULT(WINAPI *PFN_DwmFlush)(void);
+static PFN_DwmFlush g_dwm_flush;
+/* Frame pacing uses the desktop compositor's refresh beat (DwmFlush) when it is there: SwapBuffers does not
+   reliably wait for vblank in a window, so the swap interval is left at 0 and we wait for N refreshes instead. */
+void platform_set_vsync(int on) { g_vsync_on = on; if (g_swap_interval) g_swap_interval((on && !g_dwm_flush) ? g_vsync_interval : 0); }
+void platform_set_target_fps(int fps) {
+    HDC dc = GetDC(NULL);
+    int hz = dc ? GetDeviceCaps(dc, VREFRESH) : 60;
+    if (dc) ReleaseDC(NULL, dc);
+    if (hz <= 1) hz = 60;
+    int n = (hz + fps / 2) / fps;
+    g_vsync_interval = n < 1 ? 1 : n;
+    g_refresh_per_frame = (double)hz / (double)fps; /* 60 Hz -> 2.0, 165 Hz -> 5.5 */
+}
 void *platform_gl_proc(const char *name) {
     void *f = (void *)wglGetProcAddress(name);
     if (f == (void *)1 || f == (void *)2 || f == (void *)3 || f == (void *)-1) f = NULL;
@@ -188,4 +207,52 @@ double platform_time(void) {
     if (!freq.QuadPart) { QueryPerformanceFrequency(&freq); QueryPerformanceCounter(&start); }
     QueryPerformanceCounter(&now);
     return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+}
+
+void platform_set_title(const char *t) { if (g_hwnd) SetWindowTextA(g_hwnd, t); }
+
+/* Sleeps until the next frame boundary (fps), using a high-resolution timer for the bulk and a short spin for
+   the last stretch, so frames come out evenly spaced instead of whenever Sleep() wakes up. */
+void platform_frame_limit(double fps) {
+    static double next;
+    static HANDLE timer;
+    if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    double period = 1.0 / fps, now = platform_time();
+    if (next == 0.0) next = now;
+    next += period;
+    if (next < now - period) next = now;            /* fell far behind: don't try to catch up in a burst */
+    double left = next - now;
+    if (left > 0.002 && timer) {
+        LARGE_INTEGER due;
+        due.QuadPart = -(LONGLONG)((left - 0.0015) * 1e7);
+        if (SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) WaitForSingleObject(timer, 100);
+    } else if (left > 0.002) {
+        Sleep((DWORD)((left - 0.0015) * 1000.0));
+    }
+    while (platform_time() < next) { /* spin the last ~1.5 ms */ }
+}
+
+/* One frame of pacing, called right after the buffer swap. With vsync on and a compositor available this waits
+   exactly `interval` display refreshes (60 Hz, 30 fps -> 2), which gives perfectly even frame times. */
+void platform_pace(double fps) {
+    if (g_vsync_on && g_dwm_flush) {
+        /* Hold each frame until its slot (1/fps apart) by riding the compositor's refresh beat: flush until
+           the slot is less than half a refresh away. Presentation lands on a vblank, and the long-run average
+           is exact even when fps does not divide the refresh rate (165 Hz / 30 fps = 5.5 refreshes). */
+        static double next;
+        double period = 1.0 / fps, vperiod = g_refresh_per_frame > 0 ? period / g_refresh_per_frame : 1.0 / 60.0;
+        double now = platform_time();
+        if (next == 0.0) next = now;
+        next += period;
+        if (next < now - period) next = now;      /* hitched: resync instead of bursting to catch up */
+        int guard = 0;
+        while (now + 0.5 * vperiod < next && guard++ < 64) { g_dwm_flush(); now = platform_time(); }
+        return;
+    }
+    platform_frame_limit(fps);
+}
+void platform_pace_init(void) {
+    HMODULE m = LoadLibraryA("dwmapi.dll");
+    if (m) g_dwm_flush = (PFN_DwmFlush)(void *)GetProcAddress(m, "DwmFlush");
+    platform_set_vsync(g_vsync_on);
 }

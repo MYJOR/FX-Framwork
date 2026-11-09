@@ -56,8 +56,6 @@ build CMakeFiles/desert.dir/src/main.c.obj: C_COMPILER__desert_unscanned_Release
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/platform_win32.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/platform_win32.c || cmake_object_order_depends_target_desert
@@ -67,8 +65,6 @@ build CMakeFiles/desert.dir/src/platform_win32.c.obj: C_COMPILER__desert_unscann
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/gl.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/gl.c || cmake_object_order_depends_target_desert
@@ -78,8 +74,6 @@ build CMakeFiles/desert.dir/src/gl.c.obj: C_COMPILER__desert_unscanned_Release D
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/shader.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/shader.c || cmake_object_order_depends_target_desert
@@ -89,8 +83,6 @@ build CMakeFiles/desert.dir/src/shader.c.obj: C_COMPILER__desert_unscanned_Relea
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/terrain.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/terrain.c || cmake_object_order_depends_target_desert
@@ -100,8 +92,6 @@ build CMakeFiles/desert.dir/src/terrain.c.obj: C_COMPILER__desert_unscanned_Rele
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/particles.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/particles.c || cmake_object_order_depends_target_desert
@@ -111,8 +101,6 @@ build CMakeFiles/desert.dir/src/particles.c.obj: C_COMPILER__desert_unscanned_Re
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/player.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/player.c || cmake_object_order_depends_target_desert
@@ -122,8 +110,6 @@ build CMakeFiles/desert.dir/src/player.c.obj: C_COMPILER__desert_unscanned_Relea
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/character.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/character.c || cmake_object_order_depends_target_desert
@@ -133,8 +119,6 @@ build CMakeFiles/desert.dir/src/character.c.obj: C_COMPILER__desert_unscanned_Re
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/trail.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/trail.c || cmake_object_order_depends_target_desert
@@ -144,8 +128,6 @@ build CMakeFiles/desert.dir/src/trail.c.obj: C_COMPILER__desert_unscanned_Releas
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/png.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/png.c || cmake_object_order_depends_target_desert
@@ -155,8 +137,6 @@ build CMakeFiles/desert.dir/src/png.c.obj: C_COMPILER__desert_unscanned_Release 
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/diag.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/diag.c || cmake_object_order_depends_target_desert
@@ -166,8 +146,6 @@ build CMakeFiles/desert.dir/src/diag.c.obj: C_COMPILER__desert_unscanned_Release
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/debug_ui.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/debug_ui.c || cmake_object_order_depends_target_desert
@@ -177,8 +155,6 @@ build CMakeFiles/desert.dir/src/debug_ui.c.obj: C_COMPILER__desert_unscanned_Rel
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 build CMakeFiles/desert.dir/src/gamepad.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/gamepad.c || cmake_object_order_depends_target_desert
@@ -188,8 +164,24 @@ build CMakeFiles/desert.dir/src/gamepad.c.obj: C_COMPILER__desert_unscanned_Rele
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
   OBJECT_DIR = CMakeFiles\desert.dir
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
-  TARGET_PDB = desert.pdb
+  TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
+
+build CMakeFiles/desert.dir/src/coins.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/coins.c || cmake_object_order_depends_target_desert
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\desert.dir\src\coins.c.obj.d
+  FLAGS = -O3 -DNDEBUG -std=gnu11 -Wall -Wextra -O2
+  INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
+  OBJECT_DIR = CMakeFiles\desert.dir
+  OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
+  TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
+
+build CMakeFiles/desert.dir/src/beam.c.obj: C_COMPILER__desert_unscanned_Release D$:/Code$ Dump/FX-Framwork/src/beam.c || cmake_object_order_depends_target_desert
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\desert.dir\src\beam.c.obj.d
+  FLAGS = -O3 -DNDEBUG -std=gnu11 -Wall -Wextra -O2
+  INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include" -isystem "D:/Code Dump/FX-Framwork/third_party/cgltf"
+  OBJECT_DIR = CMakeFiles\desert.dir
+  OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 
@@ -200,7 +192,7 @@ build CMakeFiles/desert.dir/src/gamepad.c.obj: C_COMPILER__desert_unscanned_Rele
 #############################################
 # Link the executable desert.exe
 
-build desert.exe: C_EXECUTABLE_LINKER__desert_Release CMakeFiles/desert.dir/src/main.c.obj CMakeFiles/desert.dir/src/platform_win32.c.obj CMakeFiles/desert.dir/src/gl.c.obj CMakeFiles/desert.dir/src/shader.c.obj CMakeFiles/desert.dir/src/terrain.c.obj CMakeFiles/desert.dir/src/particles.c.obj CMakeFiles/desert.dir/src/player.c.obj CMakeFiles/desert.dir/src/character.c.obj CMakeFiles/desert.dir/src/trail.c.obj CMakeFiles/desert.dir/src/png.c.obj CMakeFiles/desert.dir/src/diag.c.obj CMakeFiles/desert.dir/src/debug_ui.c.obj CMakeFiles/desert.dir/src/gamepad.c.obj | third_party/CUI/libcui.a || third_party/CUI/libcui.a
+build desert.exe: C_EXECUTABLE_LINKER__desert_Release CMakeFiles/desert.dir/src/main.c.obj CMakeFiles/desert.dir/src/platform_win32.c.obj CMakeFiles/desert.dir/src/gl.c.obj CMakeFiles/desert.dir/src/shader.c.obj CMakeFiles/desert.dir/src/terrain.c.obj CMakeFiles/desert.dir/src/particles.c.obj CMakeFiles/desert.dir/src/player.c.obj CMakeFiles/desert.dir/src/character.c.obj CMakeFiles/desert.dir/src/trail.c.obj CMakeFiles/desert.dir/src/png.c.obj CMakeFiles/desert.dir/src/diag.c.obj CMakeFiles/desert.dir/src/debug_ui.c.obj CMakeFiles/desert.dir/src/gamepad.c.obj CMakeFiles/desert.dir/src/coins.c.obj CMakeFiles/desert.dir/src/beam.c.obj | third_party/CUI/libcui.a || third_party/CUI/libcui.a
   CONFIG = Release
   FLAGS = -O3 -DNDEBUG
   LINK_FLAGS = -static
@@ -208,10 +200,9 @@ build desert.exe: C_EXECUTABLE_LINKER__desert_Release CMakeFiles/desert.dir/src/
   OBJECT_DIR = CMakeFiles\desert.dir
   POST_BUILD = cd .
   PRE_LINK = cd .
-  TARGET_COMPILE_PDB = CMakeFiles\desert.dir\
   TARGET_FILE = desert.exe
   TARGET_IMPLIB = libdesert.dll.a
-  TARGET_PDB = desert.pdb
+  TARGET_PDB = desert.exe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
 
@@ -301,8 +292,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_core.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_theme.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_theme.c || cmake_object_order_depends_target_cui
@@ -312,8 +301,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_theme.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_draw.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_draw.c || cmake_object_order_depends_target_cui
@@ -323,8 +310,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_draw.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_text.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_text.c || cmake_object_order_depends_target_cui
@@ -334,8 +319,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_text.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_layout.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_layout.c || cmake_object_order_depends_target_cui
@@ -345,8 +328,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_layout.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_widgets.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_widgets.c || cmake_object_order_depends_target_cui
@@ -356,8 +337,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_widgets.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_controls.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_controls.c || cmake_object_order_depends_target_cui
@@ -367,8 +346,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_controls.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_textedit.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_textedit.c || cmake_object_order_depends_target_cui
@@ -378,8 +355,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_textedit.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_overlay.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_overlay.c || cmake_object_order_depends_target_cui
@@ -389,8 +364,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_overlay.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_data.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_data.c || cmake_object_order_depends_target_cui
@@ -400,8 +373,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_data.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_charts.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_charts.c || cmake_object_order_depends_target_cui
@@ -411,8 +382,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_charts.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_extras.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_extras.c || cmake_object_order_depends_target_cui
@@ -422,8 +391,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_extras.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_actions.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_actions.c || cmake_object_order_depends_target_cui
@@ -433,8 +400,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_actions.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_pickers.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_pickers.c || cmake_object_order_depends_target_cui
@@ -444,8 +409,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_pickers.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_disclosure.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_disclosure.c || cmake_object_order_depends_target_cui
@@ -455,8 +418,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_disclosure.c.obj: C_COMPILER__c
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_grid.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_grid.c || cmake_object_order_depends_target_cui
@@ -466,8 +427,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_grid.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_treetable.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_treetable.c || cmake_object_order_depends_target_cui
@@ -477,8 +436,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_treetable.c.obj: C_COMPILER__cu
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_code.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_code.c || cmake_object_order_depends_target_cui
@@ -488,8 +445,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_code.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_markdown.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_markdown.c || cmake_object_order_depends_target_cui
@@ -499,8 +454,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_markdown.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_editor.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_editor.c || cmake_object_order_depends_target_cui
@@ -510,8 +463,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_editor.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_diff.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_diff.c || cmake_object_order_depends_target_cui
@@ -521,8 +472,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_diff.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_tools.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_tools.c || cmake_object_order_depends_target_cui
@@ -532,8 +481,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_tools.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_hex.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_hex.c || cmake_object_order_depends_target_cui
@@ -543,8 +490,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_hex.c.obj: C_COMPILER__cui_unsc
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_social.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_social.c || cmake_object_order_depends_target_cui
@@ -554,8 +499,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_social.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_media.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_media.c || cmake_object_order_depends_target_cui
@@ -565,8 +508,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_media.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_planning.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_planning.c || cmake_object_order_depends_target_cui
@@ -576,8 +517,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_planning.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_chrome.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_chrome.c || cmake_object_order_depends_target_cui
@@ -587,8 +526,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_chrome.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_dock.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_dock.c || cmake_object_order_depends_target_cui
@@ -598,8 +535,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_dock.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_viz.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_viz.c || cmake_object_order_depends_target_cui
@@ -609,8 +544,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_viz.c.obj: C_COMPILER__cui_unsc
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_motion.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_motion.c || cmake_object_order_depends_target_cui
@@ -620,8 +553,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_motion.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_ai.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_ai.c || cmake_object_order_depends_target_cui
@@ -631,8 +562,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_ai.c.obj: C_COMPILER__cui_unsca
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_image.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_image.c || cmake_object_order_depends_target_cui
@@ -642,8 +571,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_image.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_nodes.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_nodes.c || cmake_object_order_depends_target_cui
@@ -653,8 +580,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_nodes.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_flame.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_flame.c || cmake_object_order_depends_target_cui
@@ -664,8 +589,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_flame.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_curves.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_curves.c || cmake_object_order_depends_target_cui
@@ -675,8 +598,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_curves.c.obj: C_COMPILER__cui_u
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_timeline.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_timeline.c || cmake_object_order_depends_target_cui
@@ -686,8 +607,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_timeline.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_dials.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_dials.c || cmake_object_order_depends_target_cui
@@ -697,8 +616,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_dials.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_month.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_month.c || cmake_object_order_depends_target_cui
@@ -708,8 +625,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_month.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_strings.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_strings.c || cmake_object_order_depends_target_cui
@@ -719,8 +634,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_strings.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_tour.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_tour.c || cmake_object_order_depends_target_cui
@@ -730,8 +643,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_tour.c.obj: C_COMPILER__cui_uns
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_photo.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_photo.c || cmake_object_order_depends_target_cui
@@ -741,8 +652,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_photo.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_files.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_files.c || cmake_object_order_depends_target_cui
@@ -752,8 +661,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_files.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_terminal.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_terminal.c || cmake_object_order_depends_target_cui
@@ -763,8 +670,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_terminal.c.obj: C_COMPILER__cui
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_emoji.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_emoji.c || cmake_object_order_depends_target_cui
@@ -774,8 +679,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_emoji.c.obj: C_COMPILER__cui_un
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/render/cui_render_sw.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/render/cui_render_sw.c || cmake_object_order_depends_target_cui
@@ -785,8 +688,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/render/cui_render_sw.c.obj: C_COMPI
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src\render
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/render/cui_render_gl.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/render/cui_render_gl.c || cmake_object_order_depends_target_cui
@@ -796,8 +697,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/render/cui_render_gl.c.obj: C_COMPI
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src\render
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_font_data.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_font_data.c || cmake_object_order_depends_target_cui
@@ -807,8 +706,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_font_data.c.obj: C_COMPILER__cu
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 build third_party/CUI/CMakeFiles/cui.dir/src/cui_inflate.c.obj: C_COMPILER__cui_unscanned_Release D$:/Code$ Dump/FX-Framwork/third_party/CUI/src/cui_inflate.c || cmake_object_order_depends_target_cui
@@ -818,8 +715,6 @@ build third_party/CUI/CMakeFiles/cui.dir/src/cui_inflate.c.obj: C_COMPILER__cui_
   INCLUDES = -I"D:/Code Dump/FX-Framwork/third_party/CUI/include"
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   OBJECT_FILE_DIR = third_party\CUI\CMakeFiles\cui.dir\src
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
-  TARGET_PDB = third_party\CUI\libcui.pdb
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 
@@ -836,9 +731,8 @@ build third_party/CUI/libcui.a: C_STATIC_LIBRARY_LINKER__cui_Release third_party
   OBJECT_DIR = third_party\CUI\CMakeFiles\cui.dir
   POST_BUILD = cd .
   PRE_LINK = cd .
-  TARGET_COMPILE_PDB = third_party\CUI\CMakeFiles\cui.dir\cui.pdb
   TARGET_FILE = third_party\CUI\libcui.a
-  TARGET_PDB = third_party\CUI\libcui.pdb
+  TARGET_PDB = cui.a.dbg
   TARGET_SUPPORT_DIR = third_party\CUI\CMakeFiles\cui.dir
 
 
@@ -940,14 +834,14 @@ build third_party/CUI/all: phony third_party/CUI/libcui.a
 #############################################
 # Re-run CMake if any of its inputs changed.
 
-build build.ninja D$:/Code$ Dump/FX-Framwork/build_cmake/cmake_install.cmake D$:/Code$ Dump/FX-Framwork/build_cmake/third_party/CUI/cmake_install.cmake: RERUN_CMAKE | C$:/Program$ Files/CMake/share/cmake-4.2/Modules/BasicConfigVersion-SameMajorVersion.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCCompiler.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCCompilerABI.c C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCompilerIdDetection.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerSupport.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineRCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeGenericSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeNinjaFindMake.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseImplicitLinkInfo.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseLibraryArchitecture.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCCompiler.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystem.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestCompilerCommon.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestRCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Bruce-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Compaq-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/HP-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IBMCPP-C-DetermineVersionInternal.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IBMClang-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/LCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SDCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SunPro-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TI-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TinyCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/VisualAge-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/XL-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/XLClang-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/zOS-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindThreads.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/GNUInstallDirs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeInspectCLinker.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/FeatureTesting.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C-ABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-Initialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-windres.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.3/CMakeCCompiler.cmake CMakeFiles/4.2.3/CMakeRCCompiler.cmake CMakeFiles/4.2.3/CMakeSystem.cmake D$:/Code$ Dump/FX-Framwork/CMakeLists.txt D$:/Code$ Dump/FX-Framwork/third_party/CUI/CMakeLists.txt
+build build.ninja D$:/Code$ Dump/FX-Framwork/build_cmake/cmake_install.cmake D$:/Code$ Dump/FX-Framwork/build_cmake/third_party/CUI/cmake_install.cmake: RERUN_CMAKE | C$:/Program$ Files/CMake/share/cmake-4.2/Modules/BasicConfigVersion-SameMajorVersion.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeGenericSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindThreads.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/GNUInstallDirs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C-ABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-Initialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-windres.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.3/CMakeCCompiler.cmake CMakeFiles/4.2.3/CMakeRCCompiler.cmake CMakeFiles/4.2.3/CMakeSystem.cmake D$:/Code$ Dump/FX-Framwork/CMakeLists.txt D$:/Code$ Dump/FX-Framwork/third_party/CUI/CMakeLists.txt
   pool = console
 
 
 #############################################
 # A missing CMake input file is not an error.
 
-build C$:/Program$ Files/CMake/share/cmake-4.2/Modules/BasicConfigVersion-SameMajorVersion.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCCompiler.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCCompilerABI.c C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCompilerIdDetection.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerSupport.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineRCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeGenericSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeNinjaFindMake.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseImplicitIncludeInfo.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseImplicitLinkInfo.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeParseLibraryArchitecture.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCCompiler.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystem.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestCompilerCommon.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeTestRCCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ADSP-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ARMCC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/ARMClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/AppleClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Borland-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Bruce-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Clang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Clang-DetermineCompilerInternal.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Compaq-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Cray-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CrayClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Diab-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Embarcadero-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Fujitsu-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GHS-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/HP-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IAR-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IBMCPP-C-DetermineVersionInternal.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IBMClang-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Intel-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/LCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/MSVC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/NVHPC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/NVIDIA-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/OrangeC-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/PGI-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/PathScale-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Renesas-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SCO-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SDCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/SunPro-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TI-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TIClang-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Tasking-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/TinyCC-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/VisualAge-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/Watcom-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/XL-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/XLClang-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/zOS-C-DetermineCompiler.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindThreads.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/GNUInstallDirs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeInspectCLinker.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/FeatureTesting.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C-ABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-Initialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-windres.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.3/CMakeCCompiler.cmake CMakeFiles/4.2.3/CMakeRCCompiler.cmake CMakeFiles/4.2.3/CMakeSystem.cmake D$:/Code$ Dump/FX-Framwork/CMakeLists.txt D$:/Code$ Dump/FX-Framwork/third_party/CUI/CMakeLists.txt: phony
+build C$:/Program$ Files/CMake/share/cmake-4.2/Modules/BasicConfigVersion-SameMajorVersion.cmake.in C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeGenericSystem.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeRCInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Compiler/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/FindThreads.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/GNUInstallDirs.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C-ABI.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-Initialize.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows-windres.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/Windows.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake C$:/Program$ Files/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake CMakeCache.txt CMakeFiles/4.2.3/CMakeCCompiler.cmake CMakeFiles/4.2.3/CMakeRCCompiler.cmake CMakeFiles/4.2.3/CMakeSystem.cmake D$:/Code$ Dump/FX-Framwork/CMakeLists.txt D$:/Code$ Dump/FX-Framwork/third_party/CUI/CMakeLists.txt: phony
 
 
 #############################################

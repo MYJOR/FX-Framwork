@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ANIM_SPEED 1.3f /* stylised, snappier playback: every clip runs this much faster */
 static const char *CLIP_NAMES[CH_CLIPS] = {"Idle_Loop", "Walk_Loop", "Jog_Fwd_Loop", "Sprint_Loop"};
 /* Ground speeds (m/s) at which each clip's feet roughly match the ground. Tune to taste. */
 static const float CLIP_SPEED[CH_CLIPS] = {0.0f, 1.9f, 4.5f, 7.5f};
@@ -172,12 +173,29 @@ int character_load(Character *c, const char *path) {
 
     for (int i = 0; i < CH_CLIPS; i++) load_clip_named(c, d, &c->clip[i], CLIP_NAMES[i]);
     c->spring_on = 1;
+    {
+        static const char *limbs[8][2] = {{"upperarm_l", "lowerarm_l"}, {"lowerarm_l", "hand_l"}, {"upperarm_r", "lowerarm_r"},
+            {"lowerarm_r", "hand_r"}, {"thigh_l", "calf_l"}, {"calf_l", "foot_l"}, {"thigh_r", "calf_r"}, {"calf_r", "foot_r"}};
+        for (int i = 0; i < 8; i++) { c->limb_j[i][0] = joint_by_name(c, limbs[i][0]); c->limb_j[i][1] = joint_by_name(c, limbs[i][1]); }
+    }
     c->look_j[0] = joint_by_name(c, "spine_03");
     c->look_j[1] = joint_by_name(c, "neck_01");
     c->look_j[2] = joint_by_name(c, "Head");
     load_clip_named(c, d, &c->jump_start, "Jump_Start");
     load_clip_named(c, d, &c->jump_loop, "Jump_Loop");
     load_clip_named(c, d, &c->jump_land, "Jump_Land");
+    load_clip_named(c, d, &c->cast_enter, "Spell_Double_Enter");
+    load_clip_named(c, d, &c->cast_loop, "Spell_Double_Shoot_Loop");
+    {
+        int sp = joint_by_name(c, "spine_01");
+        for (int j = 0; j < c->njoints; j++) {
+            int a = j;
+            c->cast_mask[j] = 0;
+            while (a >= 0) { if (a == sp && sp >= 0) { c->cast_mask[j] = 1; break; } a = c->parent[a]; }
+        }
+        c->hand_j[0] = joint_by_name(c, "hand_l"); c->hand_j[1] = joint_by_name(c, "hand_r");
+        c->fore_j[0] = joint_by_name(c, "lowerarm_l"); c->fore_j[1] = joint_by_name(c, "lowerarm_r");
+    }
     { static const char *base[4] = {"thigh_%c", "calf_%c", "foot_%c", "ball_%c"}; for (int l = 0; l < 2; l++) for (int q = 0; q < 4; q++) { char nm[32]; snprintf(nm, sizeof nm, base[q], l ? 'r' : 'l'); c->ik_j[l][q] = joint_by_name(c, nm); } }
     printf("character: %d joints, %zu verts, %zu tris, height %.2f, clips:", c->njoints, vo, io / 3, c->height);
     for (int i = 0; i < CH_CLIPS; i++) printf(" %s=%.2fs", CLIP_NAMES[i], c->clip[i].dur);
@@ -224,8 +242,10 @@ static void pose_at(const Character *c, const ChClip *cl, float t, Pose *p) {
     }
 }
 
-static void pose_blend(const Character *c, Pose *a, const Pose *b, float f) {
+static void pose_blend_m(const Character *c, Pose *a, const Pose *b, float f0, const float *mask) {
     for (int j = 0; j < c->njoints; j++) {
+        float f = mask ? f0 * mask[j] : f0;
+        if (f <= 0.0f) continue;
         for (int k = 0; k < 3; k++) {
             a->t[j][k] += (b->t[j][k] - a->t[j][k]) * f;
             a->s[j][k] += (b->s[j][k] - a->s[j][k]) * f;
@@ -237,6 +257,8 @@ static void pose_blend(const Character *c, Pose *a, const Pose *b, float f) {
         if (l > 1e-8f) for (int k = 0; k < 4; k++) a->q[j][k] /= l;
     }
 }
+
+static void pose_blend(const Character *c, Pose *a, const Pose *b, float f) { pose_blend_m(c, a, b, f, NULL); }
 
 static void compose(const float t[3], const float q[4], const float s[3], float m[16]) {
     float x = q[0], y = q[1], z = q[2], w = q[3];
@@ -265,6 +287,13 @@ void character_set_look(Character *c, float x, float y, float z, int on) {
     c->look_t[0] = x; c->look_t[1] = y; c->look_t[2] = z; c->look_on = on;
 }
 void character_set_air(Character *c, int air) { c->air = air; }
+void character_set_cast(Character *c, int on) { c->casting = on; }
+float character_cast_beam(const Character *c, V3 hands[2]) {
+    hands[0] = c->hand_pos[0]; hands[1] = c->hand_pos[1];
+    if (!c->casting || !c->cast_loop.loaded) return 0.0f;
+    float s = c->cast_enter.loaded ? c->cast_enter.dur * 0.7f : 0.0f;
+    return clampf((c->cast_t - s) / 0.15f, 0.0f, 1.0f);
+}
 void character_set_ik(Character *c, M4 model, int on) { c->ik_model = model; c->ik_on = on; }
 
 /* rotation matrix (row-major 3x3) taking unit vector a onto unit vector b */
@@ -473,7 +502,49 @@ static void build_bones(Character *c, const Pose *p, float dt) {
     for (int j = 0; j < c->njoints; j++) mul4(c->inv_mesh, G[j], Gm[j]);
     foot_ik(c, dt, Gm);
     head_look(c, dt, Gm);
+    /* stylised proportions: blow the head up around its base */
+    if (c->look_j[2] >= 0) {
+        int hj = c->look_j[2];
+        V3 P = gpos(Gm, hj);
+        int mark[CH_MAX_JOINTS] = {0};
+        mark[hj] = 1;
+        for (int pass = 0; pass < c->njoints; pass++) {
+            int changed = 0;
+            for (int j = 0; j < c->njoints; j++)
+                if (!mark[j] && c->parent[j] >= 0 && mark[c->parent[j]]) { mark[j] = 1; changed = 1; }
+            if (!changed) break;
+        }
+        for (int j = 0; j < c->njoints; j++) {
+            if (!mark[j]) continue;
+            for (int k = 0; k < 12; k++) Gm[j][k] *= CHAR_HEAD_SCALE;
+            Gm[j][12] = P.x + (Gm[j][12] - P.x) * CHAR_HEAD_SCALE;
+            Gm[j][13] = P.y + (Gm[j][13] - P.y) * CHAR_HEAD_SCALE;
+            Gm[j][14] = P.z + (Gm[j][14] - P.z) * CHAR_HEAD_SCALE;
+        }
+    }
+    /* chubby limbs: widen each limb bone across its own axis (the joint positions don't move, so
+       bones, IK and the rest of the pose are untouched; only the skinned flesh around the bone grows) */
+    for (int i = 0; i < 8; i++) {
+        int j = c->limb_j[i][0], ch = c->limb_j[i][1];
+        if (j < 0 || ch < 0) continue;
+        V3 b = vsub(gpos(Gm, ch), gpos(Gm, j));
+        float bl = vlen(b);
+        if (bl < 1e-5f) continue;
+        b = v3_scale(b, 1.0f / bl);
+        float k = CHAR_LIMB_FAT;
+        for (int col = 0; col < 3; col++) {
+            V3 a = v3(Gm[j][col * 4], Gm[j][col * 4 + 1], Gm[j][col * 4 + 2]);
+            V3 r = v3_add(v3_scale(a, k), v3_scale(b, (1.0f - k) * v3_dot(b, a)));
+            Gm[j][col * 4] = r.x; Gm[j][col * 4 + 1] = r.y; Gm[j][col * 4 + 2] = r.z;
+        }
+    }
     for (int j = 0; j < c->njoints; j++) mul4(Gm[j], c->inv_bind[j], c->bones[j].m);
+    for (int l = 0; l < 2; l++) {
+        int h = c->hand_j[l], f = c->fore_j[l];
+        if (h < 0 || f < 0) { c->hand_pos[l] = v3(0, 0, 0); continue; }
+        V3 hp = gpos(Gm, h);
+        c->hand_pos[l] = v3_add(hp, v3_scale(vsub(hp, gpos(Gm, f)), 0.45f));
+    }
 }
 
 /* ---------- motion matching ----------
@@ -660,7 +731,7 @@ int character_load_motion(Character *c, const char *rm1, const char *rm2) {
     if (root < 0 || c->ik_j[0][2] < 0) return 0;
     MotionDB *db = (MotionDB *)calloc(1, sizeof *db);
     db->root = root;
-    db->sc = c->height > 0.1f ? 1.75f / c->height : 1.0f;
+    db->sc = c->height > 0.1f ? CHAR_HEIGHT_M / c->height : 1.0f;
     mm_load_file(c, db, rm1, n1);
     mm_load_file(c, db, rm2, n2);
     if (db->nclips < 4) { free(db); return 0; }
@@ -682,7 +753,7 @@ int character_mm_turn(const Character *c, float *yaw_rate) {
     int i = (int)(db->cur_t * MM_HZ);
     if (i < 1) i = 1;
     if (i > m->N - 1) i = m->N - 1;
-    *yaw_rate = -(m->ry[i + 1] - m->ry[i - 1]) * (MM_HZ / 2.0f) * MM_TURN_SPEEDUP;
+    *yaw_rate = -(m->ry[i + 1] - m->ry[i - 1]) * (MM_HZ / 2.0f) * MM_TURN_SPEEDUP * ANIM_SPEED;
     return 1;
 }
 
@@ -700,7 +771,7 @@ void character_set_motion(Character *c, float vx, float vz, float dvx, float dvz
 /* the controller's predicted trajectory as a feature vector (pose part left zero) */
 static void mm_query(const MotionDB *db, float q[MM_DIM]) {
     const float T = 0.16f;                       /* velocity response time of the controller */
-    const float taus[3] = {0.2f, 0.4f, 0.6f};
+    const float taus[3] = {0.2f / ANIM_SPEED, 0.4f / ANIM_SPEED, 0.6f / ANIM_SPEED}; /* clip time -> real time */
     float th = MM_PI - db->yaw;                  /* world heading of the character's +Z axis */
     float cs = cosf(th), sn = sinf(th);
     float dsp = sqrtf(db->dvx * db->dvx + db->dvz * db->dvz);
@@ -717,6 +788,7 @@ static void mm_query(const MotionDB *db, float q[MM_DIM]) {
         q[h * 2 + 1] = (px * sn + pz * cs) * inv;
         q[6 + h] = wrap_pi(th_des - th) * (1.0f - expf(-t * 3.0f));
     }
+    inv /= ANIM_SPEED;                           /* velocity per second of clip time */
     q[9] = (db->vx * cs - db->vz * sn) * inv;
     q[10] = (db->vx * sn + db->vz * cs) * inv;
 }
@@ -751,9 +823,9 @@ static int mm_update(Character *c, float dt, Pose *out) {
     /* advance, nudging the rate toward the real ground speed so feet don't skate */
     int cf = mm_frame_of(db, db->cur_clip, db->cur_t);
     float cs_fu = sqrtf(db->vx * db->vx + db->vz * db->vz) / db->sc;
-    float rate = 1.0f;
-    if (db->fspeed[cf] > 0.5f && cs_fu > 0.5f) rate = clampf(cs_fu / db->fspeed[cf], 0.85f, 1.15f);
-    if (!cur->loop && !strncmp(cur->name, "Turn", 4)) rate = MM_TURN_SPEEDUP; /* turns are snappy */
+    float rate = ANIM_SPEED;
+    if (db->fspeed[cf] > 0.5f && cs_fu > 0.5f) rate = ANIM_SPEED * clampf(cs_fu / (ANIM_SPEED * db->fspeed[cf]), 0.85f, 1.15f);
+    if (!cur->loop && !strncmp(cur->name, "Turn", 4)) rate = MM_TURN_SPEEDUP * ANIM_SPEED; /* turns are snappy */
     db->cur_t += dt * rate;
     if (cur->loop) { if (db->cur_t >= cur->dur) db->cur_t = fmodf(db->cur_t, cur->dur); }
     else if (db->cur_t >= cur->dur - 1.0f / MM_HZ) { db->cur_t = cur->dur - 1.0f / MM_HZ; force = 1; }
@@ -878,7 +950,7 @@ void character_update(Character *c, float dt, float speed, int sliding) {
         int on = sliding && speed > 1.0f;
         if (on && !c->was_sliding) c->slide_t = 0;
         c->was_sliding = on;
-        c->slide_t += dt;
+        c->slide_t += dt * ANIM_SPEED;
         c->slide_w += ((on ? 1.0f : 0.0f) - c->slide_w) * clampf(dt * 10.0f, 0.0f, 1.0f);
         if (c->slide_w > 1e-3f) {
             const ChClip *sc = &c->slide_loop;
@@ -938,8 +1010,8 @@ void character_update(Character *c, float dt, float speed, int sliding) {
         if (c->air && !c->was_air) c->air_t = 0;
         if (!c->air && c->was_air) c->land_t = 0;
         c->was_air = c->air;
-        c->air_t += dt;
-        c->land_t += dt;
+        c->air_t += dt * ANIM_SPEED;
+        c->land_t += dt * ANIM_SPEED;
         int landing = !c->air && c->jump_land.loaded && c->land_t < c->jump_land.dur * 0.8f;
         float target = (c->air || landing) ? 1.0f : 0.0f;
         c->air_w += (target - c->air_w) * clampf(dt * 16.0f, 0.0f, 1.0f);
@@ -953,6 +1025,22 @@ void character_update(Character *c, float dt, float speed, int sliding) {
             if (jc == &c->jump_loop) t = fmodf(t, jc->dur);
             pose_at(c, jc, t, &tmp);
             pose_blend(c, &pose, &tmp, c->air_w);
+        }
+    }
+    /* spell cast: Enter, then the shoot loop; only spine_01 and up so the legs keep running */
+    if (c->cast_loop.loaded) {
+        if (c->casting && !c->was_casting) c->cast_t = 0;
+        c->was_casting = c->casting;
+        c->cast_t += dt * ANIM_SPEED;
+        c->cast_w += ((c->casting ? 1.0f : 0.0f) - c->cast_w) * clampf(dt * 12.0f, 0.0f, 1.0f);
+        if (c->cast_w > 1e-3f) {
+            float t = c->cast_t;
+            const ChClip *cc = &c->cast_loop;
+            if (c->cast_enter.loaded && t < c->cast_enter.dur) cc = &c->cast_enter;
+            else t -= c->cast_enter.loaded ? c->cast_enter.dur : 0.0f;
+            if (cc == &c->cast_loop) t = fmodf(t, cc->dur);
+            pose_at(c, cc, t, &tmp);
+            pose_blend_m(c, &pose, &tmp, c->cast_w, c->cast_mask);
         }
     }
     build_bones(c, &pose, dt);

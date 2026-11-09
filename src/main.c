@@ -15,6 +15,9 @@
 #include "diag.h"
 #include "debug_ui.h"
 #include "gamepad.h"
+#include "coins.h"
+#include "beam.h"
+#define TARGET_FPS 30.0f /* the game is locked to this frame rate */
 
 #define PI 3.14159265f
 
@@ -72,6 +75,7 @@ static void emit_trail_events(Particles *ps, const Trail *tr) {
 static float clampf(float v, float lo, float hi)
  { return v < lo ? lo : (v > hi ? hi : v); }
 
+double g_work_ms_max, g_work_ms_sum; int g_work_n;
 int main(int argc, char **argv) {
     const char *shot = NULL;
     Scene scene = {13.0f * PI / 180.0f, 1.0f, 60.0f * PI / 180.0f};
@@ -109,6 +113,9 @@ int main(int argc, char **argv) {
         fprintf(stderr, "platform init failed\n");
         return 1;
     }
+    platform_set_target_fps((int)TARGET_FPS);
+    platform_pace_init(); /* vsync interval for an even 30 fps on this display */
+    platform_set_vsync(1);
 
     diag_init();
     DebugState dbg;
@@ -127,13 +134,14 @@ int main(int argc, char **argv) {
         if (probe) { shader_set_dir(dirs[i]); fclose(probe); }
     }
 
-    Program sky = {0}, sand = {0}, part = {0}, body = {0}, dust = {0}, chp = {0};
+    Program sky = {0}, sand = {0}, part = {0}, body = {0}, dust = {0}, chp = {0}, coinp = {0}, beamp = {0};
     if (!shader_program_load(&sky, "sky.vert", "sky.frag") ||
         !shader_program_load(&sand, "sand.vert", "sand.frag") ||
         !shader_program_load(&part, "particle.vert", "particle.frag") ||
         !shader_program_load(&body, "capsule.vert", "capsule.frag") ||
         !shader_program_load(&dust, "dust.vert", "dust.frag") ||
-        !shader_program_load(&chp, "char.vert", "char.frag")) {
+        !shader_program_load(&chp, "char.vert", "char.frag") ||
+        !shader_program_load(&coinp, "coin.vert", "coin.frag") || !shader_program_load(&beamp, "beam.vert", "beam.frag")) {
         fprintf(stderr, "shader load failed\n");
         return 1;
     }
@@ -171,6 +179,11 @@ int main(int argc, char **argv) {
     }
     static Trail trail;
     trail_init(&trail, player.pos);
+    static Coins coins;
+    static Beams beams;
+    beams_init(&beams);
+    coins_init(&coins, player.pos, 140.0f, 40);
+    {   char ttl[96]; snprintf(ttl, sizeof ttl, "Desert - coins 0/%d", coins.n); platform_set_title(ttl); }
 
     ChaseCam cc = {yaw, pitch, 6.5f, v3(0, 0, 0), v3(0, 0, 0)};
     cc.target = v3_add(player.pos, v3(0, 1.3f, 0));
@@ -209,6 +222,7 @@ int main(int argc, char **argv) {
         float dt = (float)(now - last);
         last = now;
         if (dt > 0.05f) dt = 0.05f;
+        if (fabsf(dt - 1.0f / TARGET_FPS) < 0.006f) dt = 1.0f / TARGET_FPS; /* steady timestep: no micro-jitter in the sim */
         float time = (float)now + time_offset;
 
         if (plat.keys[VK_ESCAPE]) break;
@@ -257,6 +271,7 @@ int main(int argc, char **argv) {
         V3 cam_right = v3_norm(v3_cross(cam_fwd, v3(0, 1, 0)));
         V3 cam;      /* final eye position */
         V3 view_fwd; /* final view direction */
+        int cast_on = 0; /* X / gamepad X: spell cast, shoots beams from the hands */
 
         if (free_mode) {
             float speed = (plat.keys[VK_SHIFT] || pad.rt > 0.5f) ? 40.0f : 8.0f;
@@ -292,7 +307,14 @@ int main(int argc, char **argv) {
             player.jump_req = (space && !space_was) || (pad.pressed & GP_A);
             space_was = space;
             diag_zone_begin("Sim:Player");
+            cast_on = getenv("DESERT_CAST") != NULL || plat.keys['X'] || (pad.buttons & GP_X);
             player_update(&player, dt, ix, iz, gait);
+            if (cast_on) {   /* face where the camera looks while casting */
+                float dy = atan2f(f.x, -f.z) - player.yaw;
+                while (dy > PI) dy -= 2.0f * PI;
+                while (dy < -PI) dy += 2.0f * PI;
+                player.yaw += dy * (1.0f - expf(-14.0f * dt));
+            }
             diag_zone_end();
             {   /* sand bursts at takeoff and touchdown */
                 static int air_prev;
@@ -311,7 +333,7 @@ int main(int argc, char **argv) {
             diag_zone_end();
 
             /* smoothed target, then place the eye behind it along the orbit direction */
-            V3 want = v3_add(player.pos, v3(0, 1.3f, 0));
+            V3 want = v3_add(player.pos, v3(0, 1.05f, 0));
             float k = 1.0f - expf(-9.0f * dt);
             cc.target = v3_add(cc.target, v3_scale(v3_add(want, v3_scale(cc.target, -1.0f)), k));
             V3 eye = v3_add(cc.target, v3_scale(cam_fwd, -cc.distance));
@@ -326,10 +348,11 @@ int main(int argc, char **argv) {
         if (have_char) {
             M4 ikm = m4_mul(m4_translate(player.pos), m4_rotate_y(-player.yaw + PI));
             ikm = m4_mul(ikm, m4_rotate_x(player.lean * 0.35f));
-            float ik_sc = 1.75f / character.height;
+            float ik_sc = CHAR_HEIGHT_M / character.height;
             for (int k = 0; k < 12; k++) ikm.m[k] *= ik_sc;
             character_set_ik(&character, ikm, !free_mode);
             character_set_air(&character, !free_mode && player.air);
+            character_set_cast(&character, cast_on);
             /* the head follows where the camera looks */
             character_set_look(&character, cam.x + view_fwd.x * 30.0f, cam.y + view_fwd.y * 30.0f, cam.z + view_fwd.z * 30.0f, !free_mode);
             if (free_mode) character_set_motion(&character, 0, 0, 0, 0, player.yaw);
@@ -347,6 +370,8 @@ int main(int argc, char **argv) {
             shader_reload_if_changed(&body);
             shader_reload_if_changed(&dust);
             shader_reload_if_changed(&chp);
+            shader_reload_if_changed(&coinp);
+            shader_reload_if_changed(&beamp);
         }
 
         V3 right = v3_norm(v3_cross(view_fwd, v3(0, 1, 0)));
@@ -397,6 +422,7 @@ int main(int argc, char **argv) {
         diag_gpu_end(GPU_TERRAIN);
         diag_zone_end();
 
+        float beam_k = 0.0f; V3 beam_hand[2], beam_end = v3(0, 0, 0); int beam_hit = 0;
         /* player */
         diag_zone_begin("Draw:Player");
         diag_gpu_begin(GPU_PLAYER);
@@ -405,8 +431,40 @@ int main(int argc, char **argv) {
                 /* the model faces +Z; the game's forward is -Z. Only a hint of the capsule tilt: the clips carry the lean. */
                 M4 model = m4_mul(m4_translate(player.pos), m4_rotate_y(-player.yaw + PI));
                 model = m4_mul(model, m4_rotate_x(player.lean * 0.35f));
-                float sc = 1.75f / character.height; /* normalise to a 1.75 m person */
+                float sc = CHAR_HEIGHT_M / character.height; /* normalise to a 1.75 m person */
                 for (int k = 0; k < 12; k++) model.m[k] *= sc;
+                {   /* beams: palms in world space, aimed along the facing with the camera's pitch, stopped by the dunes */
+                    V3 hm[2];
+                    beam_k = character_cast_beam(&character, hm);
+                    if (beam_k > 0.0f) {
+                        for (int l = 0; l < 2; l++)
+                            beam_hand[l] = v3(model.m[0] * hm[l].x + model.m[4] * hm[l].y + model.m[8] * hm[l].z + model.m[12],
+                                              model.m[1] * hm[l].x + model.m[5] * hm[l].y + model.m[9] * hm[l].z + model.m[13],
+                                              model.m[2] * hm[l].x + model.m[6] * hm[l].y + model.m[10] * hm[l].z + model.m[14]);
+                        V3 mid = v3_scale(v3_add(beam_hand[0], beam_hand[1]), 0.5f);
+                        V3 fh = v3_norm(v3(model.m[8], 0, model.m[10]));
+                        float vy = view_fwd.y < -0.6f ? -0.6f : (view_fwd.y > 0.8f ? 0.8f : view_fwd.y);
+                        V3 dir = v3_norm(v3_add(v3_scale(fh, sqrtf(1.0f - vy * vy)), v3(0, vy, 0)));
+                        float len = 45.0f;
+                        for (float s = 0.6f; s <= 45.0f; s += 0.6f) {
+                            V3 p = v3_add(mid, v3_scale(dir, s));
+                            if (p.y < terrain_height_fast(p.x, p.z)) {
+                                float lo = s - 0.6f, hi = s;
+                                for (int i = 0; i < 6; i++) {
+                                    float md = 0.5f * (lo + hi);
+                                    V3 q = v3_add(mid, v3_scale(dir, md));
+                                    if (q.y < terrain_height_fast(q.x, q.z)) hi = md; else lo = md;
+                                }
+                                len = hi; beam_hit = 1; break;
+                            }
+                        }
+                        beam_end = v3_add(mid, v3_scale(dir, len));
+                        if (beam_hit) {
+                            static int sprayn;
+                            if ((sprayn++ % 3) == 0) particles_emit_spray(&particles, beam_end.x, beam_end.y, beam_end.z, dir.x, dir.z, 4.5f);
+                        }
+                    }
+                }
                 glUseProgram(chp.id);
                 common_uniforms(chp.id, &scene, cam, time);
                 glUniformMatrix4fv(glGetUniformLocation(chp.id, "uViewProj"), 1, GL_FALSE, vp.m);
@@ -425,6 +483,17 @@ int main(int argc, char **argv) {
         }
         diag_gpu_end(GPU_PLAYER);
         diag_zone_end();
+
+        /* collectable coins */
+        if (!free_mode && coins_update(&coins, dt, player.pos, &particles)) {
+            char ttl[96];
+            snprintf(ttl, sizeof ttl, "Desert - coins %d/%d", coins.collected, coins.n);
+            platform_set_title(ttl);
+        }
+        glUseProgram(coinp.id);
+        common_uniforms(coinp.id, &scene, cam, time);
+        glUniformMatrix4fv(glGetUniformLocation(coinp.id, "uViewProj"), 1, GL_FALSE, vp.m);
+        coins_draw(&coins, coinp.id, time);
 
         /* wind-blown sand follows the player, so gusts are always around them */
         diag_zone_begin("Sim:Particles");
@@ -451,6 +520,22 @@ int main(int argc, char **argv) {
         glDisable(GL_PROGRAM_POINT_SIZE);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
+        if (beam_k > 0.0f) {   /* additive energy beams from both palms to the impact point */
+            glUseProgram(beamp.id);
+            glUniformMatrix4fv(glGetUniformLocation(beamp.id, "uViewProj"), 1, GL_FALSE, vp.m);
+            set1f(beamp.id, "uTime", (float)time);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDepthMask(GL_FALSE);
+            float pulse = 1.0f + 0.12f * sinf((float)time * 45.0f);
+            for (int l = 0; l < 2; l++) {
+                beam_draw(&beams, beamp.id, beam_hand[l], beam_end, cam, 0.16f * pulse * beam_k, beam_k);
+                beam_flare(&beams, beamp.id, beam_hand[l], cam, cam_right, 0.3f * beam_k, beam_k * 0.7f);
+            }
+            if (beam_hit) beam_flare(&beams, beamp.id, beam_end, cam, cam_right, 0.5f * pulse, beam_k * 0.55f);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
         diag_count_draw(0);                              /* streaks */
         if (dbg.draw_dust && particles.dust_count > 0) diag_count_draw(0); /* dust points */
         diag_gpu_end(GPU_PARTICLES);
@@ -490,7 +575,27 @@ int main(int argc, char **argv) {
             break;
         }
         diag_zone_begin("Swap");
+        { extern double g_work_ms_max, g_work_ms_sum; extern int g_work_n; double w = (platform_time() - now) * 1000.0; if (w > g_work_ms_max) g_work_ms_max = w; g_work_ms_sum += w; g_work_n++; }
         platform_swap(&plat);
+        platform_pace(TARGET_FPS);
+        if (getenv("DESERT_FPS")) { /* frame pacing report: set DESERT_FPS=1 to print it */
+            static double t_prev, t_sum, t_max, t_min = 1e9;
+            static int n_frames;
+            double tn = platform_time();
+            if (t_prev > 0) {
+                double d = tn - t_prev;
+                t_sum += d; n_frames++;
+                if (d > t_max) t_max = d;
+                if (d < t_min) t_min = d;
+                if (n_frames == 150) {
+                    fprintf(stderr, "fps %.2f  frame ms avg %.2f min %.2f max %.2f  work avg %.2f worst %.2f ms\n", n_frames / t_sum, t_sum / n_frames * 1000, t_min * 1000, t_max * 1000, g_work_ms_sum / (g_work_n ? g_work_n : 1), g_work_ms_max); g_work_ms_max = g_work_ms_sum = 0; g_work_n = 0;
+                    { const DiagZoneStat *zs; int nz = diag_zone_stats(&zs);
+                      fprintf(stderr, "  zones(avg/max ms):"); for (int zi = 0; zi < nz; zi++) fprintf(stderr, " %s=%.1f/%.1f", zs[zi].name, zs[zi].avg_ms, zs[zi].max_ms); fprintf(stderr, "\n  gpu ms: %.1f\n", diag_summary().gpu_ms); }
+                    n_frames = 0; t_sum = t_max = 0; t_min = 1e9;
+                }
+            }
+            t_prev = tn;
+        }
         diag_zone_end();
     }
     debug_ui_shutdown();

@@ -12,9 +12,9 @@ static float frand(Particles *p) {
 
 /* Crest score: how far this point sits above its neighbours along the wind. */
 static float crest_score(float x, float z) {
-    float h = terrain_height(x, z);
-    float a = terrain_height(x + WIND_X * 7.0f, z + WIND_Z * 7.0f);
-    float b = terrain_height(x - WIND_X * 7.0f, z - WIND_Z * 7.0f);
+    float h = terrain_height_fast(x, z);
+    float a = terrain_height_fast(x + WIND_X * 7.0f, z + WIND_Z * 7.0f);
+    float b = terrain_height_fast(x - WIND_X * 7.0f, z - WIND_Z * 7.0f);
     return h - 0.5f * (a + b);
 }
 
@@ -29,7 +29,7 @@ static void spawn(Particles *p, int i, V3 cam, int initial) {
         z = cam.z + sinf(ang) * r - WIND_Z * 18.0f;
         if (crest_score(x, z) > 0.35f) { plume = 1; break; }
     }
-    float ground = terrain_height(x, z);
+    float ground = terrain_height_fast(x, z);
     p->px[i] = x;
     p->pz[i] = z;
     p->lift[i] = plume ? 1.0f : 0.0f;
@@ -142,7 +142,7 @@ static void kick_update(Particles *p, float dt, float time) {
         }
         p->kx[i] += p->kvx[i] * dt; p->ky[i] += p->kvy[i] * dt; p->kz[i] += p->kvz[i] * dt;
 
-        float ground = terrain_height(p->kx[i], p->kz[i]) + 0.02f;
+        float ground = terrain_height_fast(p->kx[i], p->kz[i]) + 0.02f;
         if (p->ky[i] < ground) {
             p->ky[i] = ground;
             if (p->kkind[i] == 0 && p->kvy[i] < -1.2f) { /* small bounce, then it settles */
@@ -166,7 +166,7 @@ void particles_update(Particles *p, float dt, V3 cam, float time) {
         }
 
         float g = wind_gust(p->px[i], p->pz[i], time);
-        float ground = terrain_height(p->px[i], p->pz[i]);
+        float ground = terrain_height_fast(p->px[i], p->pz[i]);
         float above = p->py[i] - ground;
 
         /* wind is slower near the ground and stronger higher up */
@@ -188,7 +188,7 @@ void particles_update(Particles *p, float dt, V3 cam, float time) {
         p->pz[i] += p->vz[i] * dt;
 
         /* saltation: grains hit the sand and hop again, more energetically in gusts */
-        float gnew = terrain_height(p->px[i], p->pz[i]) + 0.03f;
+        float gnew = terrain_height_fast(p->px[i], p->pz[i]) + 0.03f;
         if (p->py[i] < gnew) {
             p->py[i] = gnew;
             p->vy[i] = (0.6f + frand(p) * 1.6f) * (0.3f + g);

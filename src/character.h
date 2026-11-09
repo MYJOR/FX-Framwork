@@ -8,6 +8,9 @@
 
 #define CH_MAX_JOINTS 80
 #define CH_CLIPS 4
+#define CHAR_HEIGHT_M 1.25f   /* stylised: a short body (was 1.75)... */
+#define CHAR_HEAD_SCALE 0.8f  /* ...head smaller than the model's original proportions */
+#define CHAR_LIMB_FAT 1.5f    /* arms and legs are this much thicker (across the bone, not along it) */
 enum { CH_IDLE, CH_WALK, CH_JOG, CH_SPRINT };
 
 typedef struct { int n; float *t; float *v; } ChTrack;           /* keyframes of one channel */
@@ -40,6 +43,14 @@ typedef struct {
     int air, was_air;                        /* airborne flag from the controller */
     float air_w, air_t, land_t;
 
+    /* spell casting: upper-body override from UAL1 Spell_Double_* */
+    ChClip cast_enter, cast_loop;
+    int casting, was_casting;
+    float cast_w, cast_t;
+    float cast_mask[CH_MAX_JOINTS];          /* 1 for spine_01 and everything above it */
+    int hand_j[2], fore_j[2];                /* hand_l/r and lowerarm_l/r */
+    V3 hand_pos[2];                          /* palm centre, model space (set each update) */
+
     /* foot IK */
     M4 ik_model;                             /* model matrix used for drawing (translation = feet reference point) */
     int ik_on;
@@ -49,6 +60,7 @@ typedef struct {
     float sv_t[CH_MAX_JOINTS][3], sv_q[CH_MAX_JOINTS][4];   /* spring velocities */
     float sp_hl[CH_MAX_JOINTS];                             /* per-joint half-life, seconds */
     int sp_init, spring_on;
+    int limb_j[8][2];                        /* limb joint, and the joint its bone points toward */
     float look_t[3];                         /* world point the head should look at */
     int look_on;
     int look_j[3];                           /* spine_03, neck_01, Head */
@@ -72,6 +84,11 @@ void character_set_look(Character *c, float x, float y, float z, int on);
 const char *character_mm_clip(const Character *c, float *t);
 /* Whether the controller is airborne this frame (plays Jump_Start / Jump_Loop / Jump_Land). */
 void character_set_air(Character *c, int air);
+
+/* Hold to cast: arms raise (upper body only, legs keep moving). */
+void character_set_cast(Character *c, int on);
+/* Beam strength 0..1 (0 = not firing yet); fills the palm positions in model space. */
+float character_cast_beam(const Character *c, V3 hands[2]);
 
 /* Enable foot IK for this frame: model is the exact matrix the character is drawn with. */
 void character_set_ik(Character *c, M4 model, int on);

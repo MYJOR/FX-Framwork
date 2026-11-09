@@ -29,6 +29,12 @@ void platform_swap(Platform *p);
 double platform_time(void);
 void platform_set_event_hook(PlatEventFn fn, void *user);
 void platform_set_vsync(int on);
+void platform_set_title(const char *title);
+/* Lock the frame rate: picks a vsync interval for the display and paces frames evenly. */
+void platform_set_target_fps(int fps);
+void platform_frame_limit(double fps);
+void platform_pace(double fps);   /* call right after platform_swap */
+void platform_pace_init(void);
 /* Resolves any GL function, including the 1.1 ones that wglGetProcAddress refuses. */
 void *platform_gl_proc(const char *name);
 

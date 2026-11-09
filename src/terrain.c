@@ -106,3 +106,27 @@ void terrain_draw(const Terrain *t) {
     glBindVertexArray(t->vao);
     glDrawElements(GL_TRIANGLES, t->index_count, GL_UNSIGNED_INT, (void *)0);
 }
+
+/* ---- cached height grid for per-particle ground queries ----
+   terrain_height() is a dozen noise octaves; the particle system asks for it ~48k times a frame. A 1 m grid
+   sampled bilinearly is within a few cm of it (the dunes are smooth at that scale) and costs almost nothing. */
+#define HG_HALF 352.0f
+#define HG_STEP 1.0f
+#define HG_N ((int)(2.0f * HG_HALF / HG_STEP) + 2)
+static float *g_hgrid;
+
+float terrain_height_fast(float x, float z) {
+    if (!g_hgrid) {
+        g_hgrid = (float *)malloc((size_t)HG_N * HG_N * sizeof(float));
+        for (int j = 0; j < HG_N; j++)
+            for (int i = 0; i < HG_N; i++)
+                g_hgrid[(size_t)j * HG_N + i] = terrain_height(-HG_HALF + i * HG_STEP, -HG_HALF + j * HG_STEP);
+    }
+    float fx = (x + HG_HALF) / HG_STEP, fz = (z + HG_HALF) / HG_STEP;
+    if (fx < 0 || fz < 0 || fx >= HG_N - 1 || fz >= HG_N - 1) return terrain_height(x, z);
+    int ix = (int)fx, iz = (int)fz;
+    float tx = fx - (float)ix, tz = fz - (float)iz;
+    const float *r0 = g_hgrid + (size_t)iz * HG_N + ix, *r1 = r0 + HG_N;
+    float a = r0[0] + (r0[1] - r0[0]) * tx, b = r1[0] + (r1[1] - r1[0]) * tx;
+    return a + (b - a) * tz;
+}

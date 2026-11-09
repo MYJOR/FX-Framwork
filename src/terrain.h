@@ -11,6 +11,8 @@ typedef struct {
 /* Procedural dune field: asymmetric wind-built dunes (gentle windward side,
    steep slip face, sharp crest) over rolling base terrain. */
 float terrain_height(float x, float z);
+/* Same surface via a cached 1 m grid (bilinear): for bulk queries like particles. */
+float terrain_height_fast(float x, float z);
 V3 terrain_normal(float x, float z);
 
 /* Builds a (cells+1)^2 grid of vertices spanning [-half, half] on x and z. */
