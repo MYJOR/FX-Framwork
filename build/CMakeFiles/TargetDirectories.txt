@@ -1,0 +1,3 @@
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/desert.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/edit_cache.dir
+D:/2026/Code Dump/gd_FX Framwork/build/CMakeFiles/rebuild_cache.dir
