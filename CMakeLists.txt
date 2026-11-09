@@ -15,6 +15,7 @@ add_executable(desert
   src/terrain.c
   src/particles.c
   src/player.c
+  src/trail.c
   src/png.c)
 
 target_compile_options(desert PRIVATE -Wall -Wextra -O2)

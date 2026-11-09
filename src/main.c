@@ -10,6 +10,7 @@
 #include "particles.h"
 #include "wind.h"
 #include "player.h"
+#include "trail.h"
 
 #define PI 3.14159265f
 
@@ -63,6 +64,7 @@ int main(int argc, char **argv) {
     float yaw = 0.0f, pitch = 0.12f;
     float time_offset = 0.0f;
     float sim_seconds = 0.0f;   /* --walk: simulate this long with forward input before the shot */
+    float orbit_after = 0.0f;  /* --orbit: rotate the camera this many degrees after the --walk sim */
     int run_shot = 0, free_cam_shot = 0, win_w = 1280, win_h = 720;
 
     for (int i = 1; i < argc; i++) {
@@ -72,6 +74,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--pitch") && i + 1 < argc) pitch = (float)atof(argv[++i]) * PI / 180.0f;
         else if (!strcmp(argv[i], "--time") && i + 1 < argc) time_offset = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--walk") && i + 1 < argc) sim_seconds = (float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--orbit") && i + 1 < argc) orbit_after = (float)atof(argv[++i]) * PI / 180.0f;
         else if (!strcmp(argv[i], "--run")) run_shot = 1;
         else if (!strcmp(argv[i], "--free")) free_cam_shot = 1;
         else if (!strcmp(argv[i], "--pos") && i + 2 < argc) {
@@ -112,6 +115,9 @@ int main(int argc, char **argv) {
     Player player;
     player_init(&player, start.x, start.z);
 
+    static Trail trail;
+    trail_init(&trail, player.pos);
+
     ChaseCam cc = {yaw, pitch, 6.5f, v3(0, 0, 0), v3(0, 0, 0)};
     cc.target = v3_add(player.pos, v3(0, 1.3f, 0));
     V3 free_pos = v3_add(player.pos, v3(0, 3.0f, 0));
@@ -126,8 +132,10 @@ int main(int argc, char **argv) {
     if (sim_seconds > 0.0f) {
         V3 f = cam_forward(cc.yaw, 0);
         for (float t = 0; t < sim_seconds; t += 1.0f / 60.0f)
-            player_update(&player, 1.0f / 60.0f, f.x, f.z, run_shot);
+        { player_update(&player, 1.0f / 60.0f, f.x, f.z, run_shot);
+          trail_update(&trail, &player, 1.0f / 60.0f, time_offset + t); }
         cc.target = v3_add(player.pos, v3(0, 1.3f, 0));
+        cc.yaw += orbit_after;
     }
 
     double last = platform_time(), reload_timer = 0;
@@ -184,6 +192,7 @@ int main(int argc, char **argv) {
             if (plat.keys['D']) { ix += cam_right.x; iz += cam_right.z; }
             if (plat.keys['A']) { ix -= cam_right.x; iz -= cam_right.z; }
             player_update(&player, dt, ix, iz, plat.keys[VK_SHIFT]);
+            trail_update(&trail, &player, dt, time);
 
             /* smoothed target, then place the eye behind it along the orbit direction */
             V3 want = v3_add(player.pos, v3(0, 1.3f, 0));
@@ -234,6 +243,7 @@ int main(int argc, char **argv) {
         common_uniforms(sand.id, &scene, cam, time);
         set3f(sand.id, "uPlayerPos", player.pos);
         glUniformMatrix4fv(glGetUniformLocation(sand.id, "uViewProj"), 1, GL_FALSE, vp.m);
+        trail_bind(&trail);
         terrain_draw(&terrain);
 
         /* player */

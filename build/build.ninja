@@ -105,6 +105,14 @@ build CMakeFiles/desert.dir/src/player.c.obj: C_COMPILER__desert_unscanned_Relea
   OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
   TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
 
+build CMakeFiles/desert.dir/src/trail.c.obj: C_COMPILER__desert_unscanned_Release D$:/2026/Code$ Dump/gd_FX$ Framwork/src/trail.c || cmake_object_order_depends_target_desert
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\desert.dir\src\trail.c.obj.d
+  FLAGS = -O3 -DNDEBUG -std=gnu11 -Wall -Wextra -O2
+  OBJECT_DIR = CMakeFiles\desert.dir
+  OBJECT_FILE_DIR = CMakeFiles\desert.dir\src
+  TARGET_SUPPORT_DIR = CMakeFiles\desert.dir
+
 build CMakeFiles/desert.dir/src/png.c.obj: C_COMPILER__desert_unscanned_Release D$:/2026/Code$ Dump/gd_FX$ Framwork/src/png.c || cmake_object_order_depends_target_desert
   CONFIG = Release
   DEP_FILE = CMakeFiles\desert.dir\src\png.c.obj.d
@@ -121,7 +129,7 @@ build CMakeFiles/desert.dir/src/png.c.obj: C_COMPILER__desert_unscanned_Release 
 #############################################
 # Link the executable desert.exe
 
-build desert.exe: C_EXECUTABLE_LINKER__desert_Release CMakeFiles/desert.dir/src/main.c.obj CMakeFiles/desert.dir/src/platform_win32.c.obj CMakeFiles/desert.dir/src/gl.c.obj CMakeFiles/desert.dir/src/shader.c.obj CMakeFiles/desert.dir/src/terrain.c.obj CMakeFiles/desert.dir/src/particles.c.obj CMakeFiles/desert.dir/src/player.c.obj CMakeFiles/desert.dir/src/png.c.obj
+build desert.exe: C_EXECUTABLE_LINKER__desert_Release CMakeFiles/desert.dir/src/main.c.obj CMakeFiles/desert.dir/src/platform_win32.c.obj CMakeFiles/desert.dir/src/gl.c.obj CMakeFiles/desert.dir/src/shader.c.obj CMakeFiles/desert.dir/src/terrain.c.obj CMakeFiles/desert.dir/src/particles.c.obj CMakeFiles/desert.dir/src/player.c.obj CMakeFiles/desert.dir/src/trail.c.obj CMakeFiles/desert.dir/src/png.c.obj
   CONFIG = Release
   FLAGS = -O3 -DNDEBUG
   LINK_FLAGS = -static

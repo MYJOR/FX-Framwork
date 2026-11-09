@@ -18,6 +18,15 @@ float glitterLayer(vec2 wp, float scale, vec3 N, vec3 H, float fade) {
 }
 
 uniform vec3 uPlayerPos; // feet position of the player
+uniform sampler2D uTrail; // footprints/trails: R = depression, G = raised rim (see trail.c)
+const float TRAIL_SIZE = 64.0;
+const float TRAIL_TEXELS = 2048.0;
+const float TRAIL_DEPTH_M = 0.07; // metres represented by a full-strength texel value
+
+float trailHeight(vec2 uv) {
+    vec2 s = texture(uTrail, uv).rg;
+    return s.g - s.r;
+}
 
 // Soft capsule shadow: how close does the ray from this point toward the sun pass
 // to the player's body (sampled along the capsule axis)? Penumbra widens with distance.
@@ -58,18 +67,36 @@ void main() {
     vec3 L = normalize(uSunDir);
     vec3 N = normalize(vNormal);
 
+    // --- footprints & trails: sample the displacement map around the player
+    float tfade = 1.0 - smoothstep(24.0, 30.0, max(abs(vWorld.x - uPlayerPos.x), abs(vWorld.z - uPlayerPos.z)));
+    float trailDepth = 0.0, trailDisturb = 0.0;
+    vec2 trailGrad = vec2(0.0);
+    if (tfade > 0.0) {
+        vec2 tuv = vWorld.xz / TRAIL_SIZE;
+        float e = 1.0 / TRAIL_TEXELS;
+        vec2 c = texture(uTrail, tuv).rg;
+        float hx = trailHeight(tuv + vec2(e, 0.0)) - trailHeight(tuv - vec2(e, 0.0));
+        float hz = trailHeight(tuv + vec2(0.0, e)) - trailHeight(tuv - vec2(0.0, e));
+        trailGrad = vec2(hx, hz) * (TRAIL_DEPTH_M / (2.0 * TRAIL_SIZE / TRAIL_TEXELS)) * tfade;
+        trailDepth = c.r * tfade;
+        trailDisturb = clamp(max(c.r, c.g * 0.7) * 1.6, 0.0, 1.0) * tfade;
+    }
+
     // --- wind ripples: fine ridges perpendicular to the wind, fading with distance
-    float ripFade = 1.0 - smoothstep(20.0, 110.0, dist);
+    float ripFade = (1.0 - smoothstep(20.0, 110.0, dist)) * (1.0 - trailDisturb);
     float ph = dot(vWorld.xz, WIND) * 2.6 + vnoise(vWorld.xz * 0.45) * 5.0;
     float rip = cos(ph) + 0.5 * cos(ph * 2.1 + 1.3);
     vec2 g1 = vec2(vnoise(vWorld.xz * 9.0 + 3.1) - vnoise(vWorld.xz * 9.0 - 3.1));
     N = normalize(N + vec3(WIND.x, 0.0, WIND.y) * rip * 0.07 * ripFade
                     + vec3(g1.x, 0.0, g1.y) * 0.05 * (1.0 - smoothstep(10.0, 60.0, dist)));
+    // height gradient tilts the normal: n ~ (-dh/dx, 1, -dh/dz)
+    N = normalize(N + vec3(-trailGrad.x, 0.0, -trailGrad.y) * 1.5);
 
     // --- base colour: warm gold with large-scale variation
     float tint = vnoise(vWorld.xz * 0.012);
     vec3 sand = mix(vec3(0.78, 0.46, 0.24), vec3(0.93, 0.68, 0.38), tint);
     sand *= 0.92 + 0.16 * vnoise(vWorld.xz * 0.3);
+    sand *= 1.0 - 0.30 * trailDepth; // disturbed sand is darker and denser
 
     // --- diffuse with wrap, warm sun, cool-saturated shadow side
     float ndl = dot(N, L);
