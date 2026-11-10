@@ -43,7 +43,8 @@ static const int RECT_BASEBOARD[4] = {1270, 697, 1528, 882};
 static const float CEIL_COLS[4] = {1040.5f, 1199.0f, 1365.5f, 1525.5f};
 static const float CEIL_ROWS[4] = {8.5f, 156.5f, 324.5f, 485.0f};
 
-enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_COUNT };
+/* M_EMITTER0 + i is the diffuser of light i */
+enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER_LAST = M_EMITTER0 + INT_MAX_LIGHTS - 1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_COUNT };
 
 /* ---- textures ----------------------------------------------------------------------------------- */
 
@@ -180,15 +181,6 @@ static void box(VertexBuf *b, V3 mn, V3 mx, float su, float sv) {
     quad_tiled(b, v3(c.x, mn.y, c.z), v3(hx, 0, 0), v3(0, 0, hz), su, sv);
 }
 
-static void begin_draw(IntScene *s, const VertexBuf *b, int material) {
-    IntDraw *d = &s->draws[s->draw_count++];
-    d->first = b->n; d->count = 0; d->material = material;
-}
-static void end_draw(IntScene *s, const VertexBuf *b) {
-    IntDraw *d = &s->draws[s->draw_count - 1];
-    d->count = b->n - d->first;
-}
-
 static IntMaterial material(GLuint albedo, float roughness, unsigned flags) {
     IntMaterial m;
     memset(&m, 0, sizeof m);
@@ -203,47 +195,10 @@ static IntMaterial material(GLuint albedo, float roughness, unsigned flags) {
 
 /* ---- movable objects ---------------------------------------------------------------------------- */
 
-static OfficeObject *begin_object(Office *o, const VertexBuf *b, const char *name, OfficeObjectKind kind, V3 pos, float yaw) {
-    OfficeObject *obj = &o->objects[o->object_count++];
-    memset(obj, 0, sizeof *obj);
-    obj->name = name; obj->kind = kind;
-    obj->pos = obj->home = pos;
-    obj->yaw = obj->home_yaw = yaw;
-    obj->first = b->n;
-    obj->light = -1;
-    obj->intensity = 1.0f;
-    obj->snap = kind == OBJ_FURNITURE ? 0.1f : TILE;
-    return obj;
-}
+static const char *TYPE_NAMES[OT_COUNT] = {"Chair", "Desk", "Light panel", "Vent"};
+static const char *TYPE_KEYS[OT_COUNT] = {"chair", "desk", "light", "vent"};
 
-/* Closes the object's vertex range and measures it. */
-static void end_object(OfficeObject *obj, const VertexBuf *b) {
-    obj->count = b->n - obj->first;
-    obj->bmin = v3(1e9f, 1e9f, 1e9f); obj->bmax = v3(-1e9f, -1e9f, -1e9f);
-    for (int i = 0; i < obj->count; i++) {
-        const float *v = b->v + (size_t)(obj->first + i) * 8;
-        if (v[0] < obj->bmin.x) obj->bmin.x = v[0];
-        if (v[1] < obj->bmin.y) obj->bmin.y = v[1];
-        if (v[2] < obj->bmin.z) obj->bmin.z = v[2];
-        if (v[0] > obj->bmax.x) obj->bmax.x = v[0];
-        if (v[1] > obj->bmax.y) obj->bmax.y = v[1];
-        if (v[2] > obj->bmax.z) obj->bmax.z = v[2];
-    }
-}
-
-static void object_box(OfficeObject *obj, V3 mn, V3 mx) {
-    if (obj->box_count < OFFICE_OBJECT_BOXES) { obj->boxes[obj->box_count].min = mn; obj->boxes[obj->box_count].max = mx; obj->box_count++; }
-}
-
-/* A ceiling fixture of nx x nz grid cells, in object space: centred on the origin, facing down. */
-static void fixture(VertexBuf *b, int nx, int nz) {
-    quad_uv(b, v3(0, 0, 0), v3((float)nx * TILE * 0.5f, 0, 0), v3(0, 0, (float)nz * TILE * 0.5f), 0, 0, 1, 1);
-}
-
-/* Centre of the fixture that occupies grid cells [cx0, cx1) x [cz0, cz1); cell 0 starts at the -x / -z wall. */
-static V3 fixture_pos(int cx0, int cz0, int cx1, int cz1) {
-    return v3(-ROOM_HX + (float)(cx0 + cx1) * 0.5f * TILE, ROOM_H - FIXTURE_DROP, -ROOM_HZ + (float)(cz0 + cz1) * 0.5f * TILE);
-}
+const char *office_type_name(OfficeObjectType type) { return type >= 0 && type < OT_COUNT ? TYPE_NAMES[type] : "?"; }
 
 V3 office_object_to_world(const OfficeObject *obj, V3 p) {
     float cs = cosf(obj->yaw), sn = sinf(obj->yaw);
@@ -275,22 +230,79 @@ void office_clamp_object(const Office *o, OfficeObject *obj) {
     if (hi.z > s->room_max.z - margin) obj->pos.z -= hi.z - (s->room_max.z - margin);
 }
 
+/* The material a part of an object is drawn with, or -1 if it is not drawn (the diffuser of a light
+   that did not get one of the renderer's light slots). */
+static int part_material(const OfficeObject *obj, const OfficePart *part) {
+    if (!part->emitter) return part->material;
+    return obj->light >= 0 ? M_EMITTER0 + obj->light : -1;
+}
+
 void office_update(Office *o) {
     IntScene *s = &o->scene;
     s->proxy_count = 0;
+    s->light_count = 0;
     o->collider_count = 0;
+
+    /* hand out the light slots and size the vertex buffer */
+    int total = o->room_count;
+    for (int k = 0; k < o->object_count; k++) {
+        OfficeObject *obj = &o->objects[k];
+        obj->light = -1;
+        if (!obj->visible) continue;
+        if (obj->kind == OBJ_LIGHT && s->light_count < INT_MAX_LIGHTS) obj->light = s->light_count++;
+        const OfficeProto *proto = &o->protos[obj->type];
+        for (int p = 0; p < proto->part_count; p++) total += proto->parts[p].n;
+    }
+    if (total > o->world_cap) {
+        float *grown = (float *)realloc(o->world, (size_t)total * 8 * sizeof(float));
+        if (!grown) return;
+        o->world = grown; o->world_cap = total;
+    }
+
+    /* objects first, one draw per material, so they fill the depth buffer before the room */
+    int n = 0;
+    s->draw_count = 0;
+    for (int m = 0; m < M_COUNT; m++) {
+        int first = n;
+        for (int k = 0; k < o->object_count; k++) {
+            const OfficeObject *obj = &o->objects[k];
+            if (!obj->visible) continue;
+            const OfficeProto *proto = &o->protos[obj->type];
+            float cs = cosf(obj->yaw), sn = sinf(obj->yaw);
+            for (int p = 0; p < proto->part_count; p++) {
+                const OfficePart *part = &proto->parts[p];
+                if (part_material(obj, part) != m) continue;
+                for (int i = 0; i < part->n; i++) {
+                    const float *v = part->v + (size_t)i * 8;
+                    float *w = o->world + (size_t)n++ * 8;
+                    w[0] = obj->pos.x + v[0] * cs + v[2] * sn;
+                    w[1] = obj->pos.y + v[1];
+                    w[2] = obj->pos.z - v[0] * sn + v[2] * cs;
+                    w[3] = v[3] * cs + v[5] * sn;
+                    w[4] = v[4];
+                    w[5] = -v[3] * sn + v[5] * cs;
+                    w[6] = v[6]; w[7] = v[7];
+                }
+            }
+        }
+        if (n > first && s->draw_count < INT_MAX_DRAWS) {
+            IntDraw d = {first, n - first, m};
+            s->draws[s->draw_count++] = d;
+        }
+    }
+    memcpy(o->world + (size_t)n * 8, o->room, (size_t)o->room_count * 8 * sizeof(float));
+    for (int i = 0; i < o->room_draw_count && s->draw_count < INT_MAX_DRAWS; i++) {
+        IntDraw d = o->room_draws[i];
+        d.first += n;
+        s->draws[s->draw_count++] = d;
+    }
+    n += o->room_count;
+    s->vertex_count = n;
+
     for (int k = 0; k < o->object_count; k++) {
         const OfficeObject *obj = &o->objects[k];
+        if (!obj->visible) continue;
         float cs = cosf(obj->yaw), sn = sinf(obj->yaw);
-        for (int i = 0; i < obj->count; i++) {
-            const float *v = o->local + (size_t)(obj->first + i) * 8;
-            float *w = o->world + (size_t)(obj->first + i) * 8;
-            w[0] = obj->pos.x + v[0] * cs + v[2] * sn;
-            w[1] = obj->pos.y + v[1];
-            w[2] = obj->pos.z - v[0] * sn + v[2] * cs;
-            w[3] = v[3] * cs + v[5] * sn;
-            w[5] = -v[3] * sn + v[5] * cs;
-        }
         if (obj->light >= 0) {
             IntLight *l = &s->lights[obj->light];
             /* neutral white leaning slightly cool by design; warmth trades blue against red */
@@ -302,9 +314,8 @@ void office_update(Office *o) {
             l->half_v = v3(obj->light_half.z * sn, 0, obj->light_half.z * cs);
             l->normal = v3(0, -1, 0);
             l->radiance = rad;
-            s->mats[obj->emitter_mat].emissive[0] = rad.x;
-            s->mats[obj->emitter_mat].emissive[1] = rad.y;
-            s->mats[obj->emitter_mat].emissive[2] = rad.z;
+            IntMaterial *em = &s->mats[M_EMITTER0 + obj->light];
+            em->emissive[0] = rad.x; em->emissive[1] = rad.y; em->emissive[2] = rad.z;
         }
         for (int i = 0; i < obj->box_count; i++) {
             V3 lo, hi;
@@ -323,7 +334,200 @@ void office_update(Office *o) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+/* ---- adding and removing objects ---------------------------------------------------------------- */
+
+static int name_taken(const Office *o, const char *name, int except) {
+    for (int i = 0; i < o->object_count; i++)
+        if (i != except && !strcmp(o->objects[i].name, name)) return 1;
+    return 0;
+}
+
+/* "Chair", then "Chair 2", "Chair 3", ... */
+static void unique_name(const Office *o, const char *base, char out[OFFICE_NAME_LEN]) {
+    char stem[OFFICE_NAME_LEN];
+    snprintf(stem, sizeof stem, "%.24s", base);
+    int len = (int)strlen(stem);
+    while (len > 0 && stem[len - 1] >= '0' && stem[len - 1] <= '9') len--; /* "Vent 2" continues as "Vent 3" */
+    while (len > 0 && stem[len - 1] == ' ') len--;
+    stem[len] = 0;
+    if (!len) snprintf(stem, sizeof stem, "Object");
+    snprintf(out, OFFICE_NAME_LEN, "%s", stem);
+    for (int n = 2; name_taken(o, out, -1) && n < 1000; n++) snprintf(out, OFFICE_NAME_LEN, "%s %d", stem, n);
+}
+
+int office_light_count(const Office *o, int visible_only) {
+    int n = 0;
+    for (int i = 0; i < o->object_count; i++)
+        if (o->objects[i].kind == OBJ_LIGHT && (!visible_only || o->objects[i].visible)) n++;
+    return n;
+}
+
+int office_add_object(Office *o, OfficeObjectType type, V3 pos, float yaw) {
+    if (type < 0 || type >= OT_COUNT || o->object_count >= OFFICE_MAX_OBJECTS) return -1;
+    if (type == OT_LIGHT_PANEL && office_light_count(o, 0) >= INT_MAX_LIGHTS) return -1;
+    OfficeObject obj = o->protos[type].tmpl;
+    obj.pos.x = pos.x; obj.pos.z = pos.z;
+    if (obj.kind != OBJ_FURNITURE) { /* ceiling fixtures sit in the grid */
+        obj.pos.x = -ROOM_HX + (floorf((obj.pos.x + ROOM_HX) / TILE) + (type == OT_LIGHT_PANEL ? 1.0f : 0.5f)) * TILE;
+        obj.pos.z = -ROOM_HZ + (floorf((obj.pos.z + ROOM_HZ) / TILE) + 0.5f) * TILE;
+    }
+    obj.yaw = yaw;
+    office_clamp_object(o, &obj);
+    obj.home = obj.pos; obj.home_yaw = obj.yaw;
+    unique_name(o, TYPE_NAMES[type], obj.name);
+    o->objects[o->object_count] = obj;
+    return o->object_count++;
+}
+
+int office_duplicate_object(Office *o, int index) {
+    if (index < 0 || index >= o->object_count || o->object_count >= OFFICE_MAX_OBJECTS) return -1;
+    OfficeObject obj = o->objects[index];
+    if (obj.kind == OBJ_LIGHT && office_light_count(o, 0) >= INT_MAX_LIGHTS) return -1;
+    float step = obj.kind == OBJ_FURNITURE ? 0.4f : (obj.type == OT_LIGHT_PANEL ? 2.0f * TILE : TILE);
+    obj.pos.x += step;
+    office_clamp_object(o, &obj);
+    if (fabsf(obj.pos.x - o->objects[index].pos.x) < step * 0.5f) { /* against the wall: go the other way */
+        obj.pos.x = o->objects[index].pos.x - step;
+        office_clamp_object(o, &obj);
+    }
+    obj.home = obj.pos; obj.home_yaw = obj.yaw;
+    obj.locked = 0;
+    unique_name(o, o->objects[index].name, obj.name);
+    o->objects[o->object_count] = obj;
+    return o->object_count++;
+}
+
+void office_remove_object(Office *o, int index) {
+    if (index < 0 || index >= o->object_count) return;
+    memmove(&o->objects[index], &o->objects[index + 1], (size_t)(o->object_count - index - 1) * sizeof(OfficeObject));
+    o->object_count--;
+}
+
+/* Centre of the fixture that occupies grid cells [cx0, cx1) x [cz0, cz1); cell 0 starts at the -x / -z wall. */
+static V3 fixture_pos(int cx0, int cz0, int cx1, int cz1) {
+    return v3(-ROOM_HX + (float)(cx0 + cx1) * 0.5f * TILE, 0, -ROOM_HZ + (float)(cz0 + cz1) * 0.5f * TILE);
+}
+
+static void add_named(Office *o, OfficeObjectType type, V3 pos, float yaw, const char *name) {
+    int i = office_add_object(o, type, pos, yaw);
+    if (i < 0) return;
+    OfficeObject *obj = &o->objects[i];
+    obj->pos.x = obj->home.x = pos.x; obj->pos.z = obj->home.z = pos.z; /* exactly as designed, no grid rounding */
+    snprintf(obj->name, sizeof obj->name, "%s", name);
+}
+
+void office_reset(Office *o) {
+    o->object_count = 0;
+    add_named(o, OT_CHAIR, v3(CHAIR_X, 0, CHAIR_Z), CHAIR_YAW, "Chair");
+    add_named(o, OT_DESK, v3(0, 0, DESK_Z), 0.0f, "Desk");
+    /* The key light sits in front of the desk and to its right, so the desk and chair are lit from the
+       player's side with shadows falling away; the second fills the entry end. */
+    add_named(o, OT_LIGHT_PANEL, fixture_pos(6, 5, 8, 6), 0.0f, "Key light");
+    add_named(o, OT_LIGHT_PANEL, fixture_pos(2, 9, 4, 10), 0.0f, "Fill light");
+    add_named(o, OT_VENT, fixture_pos(7, 4, 8, 5), 0.0f, "Vent 1");
+    add_named(o, OT_VENT, fixture_pos(2, 2, 3, 3), 0.0f, "Vent 2");
+    office_update(o);
+}
+
+/* ---- save / load -------------------------------------------------------------------------------- */
+
+int office_save(const Office *o, const char *path) {
+    FILE *f = fopen(path, "w");
+    if (!f) return 0;
+    fprintf(f, "office-scene 1\n# type x z yaw(deg) visible locked intensity warmth name\n");
+    for (int i = 0; i < o->object_count; i++) {
+        const OfficeObject *obj = &o->objects[i];
+        fprintf(f, "object %s %.4f %.4f %.3f %d %d %.3f %.3f %s\n", TYPE_KEYS[obj->type], obj->pos.x, obj->pos.z,
+                obj->yaw * 180.0f / PI, obj->visible, obj->locked, obj->intensity, obj->warmth, obj->name);
+    }
+    int ok = !ferror(f);
+    return fclose(f) == 0 && ok;
+}
+
+int office_load(Office *o, const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    static OfficeObject loaded[OFFICE_MAX_OBJECTS];
+    int count = 0, lights = 0, version = 0, ok = 1;
+    char line[256];
+    if (!fgets(line, sizeof line, f) || sscanf(line, "office-scene %d", &version) != 1 || version != 1) ok = 0;
+    while (ok && fgets(line, sizeof line, f)) {
+        char key[16], name[OFFICE_NAME_LEN];
+        float x, z, deg, intensity, warmth;
+        int visible, locked;
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') continue;
+        if (sscanf(line, "object %15s %f %f %f %d %d %f %f %31[^\r\n]", key, &x, &z, &deg, &visible, &locked, &intensity, &warmth, name) != 9) { ok = 0; break; }
+        int type = -1;
+        for (int t = 0; t < OT_COUNT; t++) if (!strcmp(key, TYPE_KEYS[t])) type = t;
+        if (type < 0 || count >= OFFICE_MAX_OBJECTS) { ok = 0; break; }
+        if (type == OT_LIGHT_PANEL && ++lights > INT_MAX_LIGHTS) { ok = 0; break; }
+        OfficeObject obj = o->protos[type].tmpl;
+        obj.pos.x = x; obj.pos.z = z; obj.yaw = deg * PI / 180.0f;
+        obj.visible = visible != 0; obj.locked = locked != 0;
+        obj.intensity = intensity < 0.0f ? 0.0f : intensity; obj.warmth = warmth;
+        office_clamp_object(o, &obj);
+        obj.home = obj.pos; obj.home_yaw = obj.yaw;
+        snprintf(obj.name, sizeof obj.name, "%s", name);
+        loaded[count++] = obj;
+    }
+    fclose(f);
+    if (!ok) return 0;
+    memcpy(o->objects, loaded, (size_t)count * sizeof(OfficeObject));
+    o->object_count = count;
+    office_update(o);
+    return 1;
+}
+
 /* ---- build -------------------------------------------------------------------------------------- */
+
+/* Closes a part of a prototype: takes the vertices gathered so far. */
+static void end_part(OfficeProto *proto, VertexBuf *b, int material, int emitter) {
+    OfficePart *part = &proto->parts[proto->part_count++];
+    part->v = b->v; part->n = b->n; part->material = material; part->emitter = emitter;
+    memset(b, 0, sizeof *b);
+}
+
+/* Fills in the template object every instance of the prototype starts from, and measures it. */
+static OfficeObject *end_proto(OfficeProto *proto, OfficeObjectType type, OfficeObjectKind kind, float y) {
+    OfficeObject *obj = &proto->tmpl;
+    memset(obj, 0, sizeof *obj);
+    obj->type = type; obj->kind = kind;
+    obj->visible = 1;
+    obj->pos = v3(0, y, 0);
+    obj->light = -1;
+    obj->intensity = 1.0f;
+    obj->snap = kind == OBJ_FURNITURE ? 0.1f : TILE;
+    obj->bmin = v3(1e9f, 1e9f, 1e9f); obj->bmax = v3(-1e9f, -1e9f, -1e9f);
+    for (int p = 0; p < proto->part_count; p++)
+        for (int i = 0; i < proto->parts[p].n; i++) {
+            const float *v = proto->parts[p].v + (size_t)i * 8;
+            if (v[0] < obj->bmin.x) obj->bmin.x = v[0];
+            if (v[1] < obj->bmin.y) obj->bmin.y = v[1];
+            if (v[2] < obj->bmin.z) obj->bmin.z = v[2];
+            if (v[0] > obj->bmax.x) obj->bmax.x = v[0];
+            if (v[1] > obj->bmax.y) obj->bmax.y = v[1];
+            if (v[2] > obj->bmax.z) obj->bmax.z = v[2];
+        }
+    return obj;
+}
+
+static void object_box(OfficeObject *obj, V3 mn, V3 mx) {
+    if (obj->box_count < OFFICE_OBJECT_BOXES) { obj->boxes[obj->box_count].min = mn; obj->boxes[obj->box_count].max = mx; obj->box_count++; }
+}
+
+/* A ceiling fixture of nx x nz grid cells, in object space: centred on the origin, facing down. */
+static void fixture(VertexBuf *b, int nx, int nz) {
+    quad_uv(b, v3(0, 0, 0), v3((float)nx * TILE * 0.5f, 0, 0), v3(0, 0, (float)nz * TILE * 0.5f), 0, 0, 1, 1);
+}
+
+static void begin_room_draw(Office *o, const VertexBuf *b, int material) {
+    IntDraw *d = &o->room_draws[o->room_draw_count++];
+    d->first = b->n; d->count = 0; d->material = material;
+}
+static void end_room_draw(Office *o, const VertexBuf *b) {
+    IntDraw *d = &o->room_draws[o->room_draw_count - 1];
+    d->count = b->n - d->first;
+}
 
 int office_build(Office *o, const char *asset_dir) {
     memset(o, 0, sizeof *o);
@@ -383,8 +587,8 @@ int office_build(Office *o, const char *asset_dir) {
     s->mats[M_DESK].specular = 0.06f;
     s->mats[M_BASEBOARD] = material(base_tex, 0.4f, MAT_SHELL);
     s->mats[M_PANEL] = material(panel_tex, 0.5f, MAT_SHELL);
-    s->mats[M_EMITTER0] = material(0, 1.0f, MAT_SHELL); /* one per light: office_update sets their radiance */
-    s->mats[M_EMITTER1] = material(0, 1.0f, MAT_SHELL);
+    for (int i = 0; i < INT_MAX_LIGHTS; i++) /* one per light: office_update sets their radiance */
+        s->mats[M_EMITTER0 + i] = material(0, 1.0f, MAT_SHELL);
     s->mats[M_VENT] = material(vent_tex, 0.55f, MAT_SHELL);
     s->mats[M_FLOOR] = material(floor_tex, 0.34f, MAT_SHELL); /* sealed laminate: a soft sheen, not a mirror */
     s->mats[M_FLOOR].rough_variation = 0.30f;
@@ -392,11 +596,10 @@ int office_build(Office *o, const char *asset_dir) {
     s->mats[M_WALL] = material(wall_tex, 0.92f, MAT_SHELL);
     s->mats[M_CEILING] = material(ceil_tex, 0.95f, MAT_SHELL);
 
-    /* ---- geometry: furniture first so it fills the depth buffer before the room ---- */
+    /* ---- prototypes: what an object of each type is made of, in its own space ---- */
     VertexBuf vb = {0};
+    OfficeObject *obj;
 
-    OfficeObject *obj = begin_object(o, &vb, "Chair", OBJ_FURNITURE, v3(CHAIR_X, 0, CHAIR_Z), CHAIR_YAW);
-    begin_draw(s, &vb, M_CHAIR);
     {   /* the model is Y-up with its back toward -Z and arbitrary units: stand it on the floor at chair height */
         float scale = CHAIR_HEIGHT / (mesh.max[1] - mesh.min[1]);
         float mx = (mesh.min[0] + mesh.max[0]) * 0.5f, mz = (mesh.min[2] + mesh.max[2]) * 0.5f;
@@ -406,64 +609,52 @@ int office_build(Office *o, const char *asset_dir) {
                         v3(v[3], v[4], v[5]), v[6], v[7]);
         }
     }
-    end_draw(s, &vb);
-    end_object(obj, &vb);
+    end_part(&o->protos[OT_CHAIR], &vb, M_CHAIR, 0);
+    obj = end_proto(&o->protos[OT_CHAIR], OT_CHAIR, OBJ_FURNITURE, 0.0f);
     obj->solid = 1;
     fbx_free(&mesh);
 
-    obj = begin_object(o, &vb, "Desk", OBJ_FURNITURE, v3(0, 0, DESK_Z), 0.0f);
-    begin_draw(s, &vb, M_DESK);
     {   /* double-pedestal desk: top, two pedestals on plinths, a modesty panel facing the room */
         const float su = 1.3f, sv = 0.42f; /* shrink the floor planks into furniture-scale grain */
         float z0 = -DESK_HZ, z1 = DESK_HZ;
         V3 top0 = v3(-DESK_HX, DESK_H - 0.045f, z0), top1 = v3(DESK_HX, DESK_H, z1);
+        V3 mod0 = v3(-DESK_HX + 0.46f, 0.20f, z1 - 0.16f), mod1 = v3(DESK_HX - 0.46f, DESK_H - 0.045f, z1 - 0.14f);
         box(&vb, top0, top1, su, sv);
-        object_box(obj, top0, top1);
         for (int side = -1; side <= 1; side += 2) {
             float xa = side < 0 ? -DESK_HX + 0.04f : DESK_HX - 0.46f, xb = xa + 0.42f;
             box(&vb, v3(xa, 0.07f, z0 + 0.04f), v3(xb, DESK_H - 0.045f, z1 - 0.04f), su, sv);
             box(&vb, v3(xa - 0.02f, 0.0f, z0 + 0.02f), v3(xb + 0.02f, 0.07f, z1 - 0.02f), su, sv);
+        }
+        box(&vb, mod0, mod1, su, sv);
+        end_part(&o->protos[OT_DESK], &vb, M_DESK, 0);
+        obj = end_proto(&o->protos[OT_DESK], OT_DESK, OBJ_FURNITURE, 0.0f);
+        obj->solid = 1;
+        object_box(obj, top0, top1);
+        for (int side = -1; side <= 1; side += 2) {
+            float xa = side < 0 ? -DESK_HX + 0.04f : DESK_HX - 0.46f, xb = xa + 0.42f;
             object_box(obj, v3(xa - 0.02f, 0.0f, z0 + 0.02f), v3(xb + 0.02f, DESK_H - 0.045f, z1 - 0.02f));
         }
-        V3 mod0 = v3(-DESK_HX + 0.46f, 0.20f, z1 - 0.16f), mod1 = v3(DESK_HX - 0.46f, DESK_H - 0.045f, z1 - 0.14f);
-        box(&vb, mod0, mod1, su, sv);
         object_box(obj, mod0, mod1);
     }
-    end_draw(s, &vb);
-    end_object(obj, &vb);
-    obj->solid = 1;
     s->proxy_albedo = v3(0.32f * s->mats[M_DESK].tint[0], 0.32f * s->mats[M_DESK].tint[1], 0.32f * s->mats[M_DESK].tint[2]);
 
-    /* two 0.6 x 1.2 m light panels. The key sits in front of the desk and to its right, so the desk and
-       chair are lit from the player's side with shadows falling away; the second fills the entry end.
-       Each is a framed fixture plus its diffuser: the lit area, drawn as its own piece of geometry so
-       its outline is antialiased like any other edge. */
-    for (int i = 0; i < 2; i++) {
-        obj = begin_object(o, &vb, i ? "Fill light" : "Key light", OBJ_LIGHT,
-                           i ? fixture_pos(2, 9, 4, 10) : fixture_pos(6, 5, 8, 6), 0.0f);
-        begin_draw(s, &vb, M_PANEL);
+    {   /* 0.6 x 1.2 m light panel: a framed fixture plus its diffuser, the lit area, drawn as its own
+           piece of geometry so its outline is antialiased like any other edge */
+        V3 half = v3(TILE - PANEL_FRAME_X, 0, TILE * 0.5f - PANEL_FRAME_Z);
         fixture(&vb, 2, 1);
-        end_draw(s, &vb);
-        obj->light = s->light_count++;
-        obj->emitter_mat = i ? M_EMITTER1 : M_EMITTER0;
-        obj->light_half = v3(TILE - PANEL_FRAME_X, 0, TILE * 0.5f - PANEL_FRAME_Z);
-        begin_draw(s, &vb, obj->emitter_mat);
-        quad_uv(&vb, v3(0, -EMITTER_DROP, 0), v3(obj->light_half.x, 0, 0), v3(0, 0, obj->light_half.z), 0, 0, 1, 1);
-        end_draw(s, &vb);
-        end_object(obj, &vb);
+        end_part(&o->protos[OT_LIGHT_PANEL], &vb, M_PANEL, 0);
+        quad_uv(&vb, v3(0, -EMITTER_DROP, 0), v3(half.x, 0, 0), v3(0, 0, half.z), 0, 0, 1, 1);
+        end_part(&o->protos[OT_LIGHT_PANEL], &vb, M_EMITTER0, 1);
+        obj = end_proto(&o->protos[OT_LIGHT_PANEL], OT_LIGHT_PANEL, OBJ_LIGHT, ROOM_H - FIXTURE_DROP);
+        obj->light_half = half;
     }
 
-    for (int i = 0; i < 2; i++) {
-        obj = begin_object(o, &vb, i ? "Vent 2" : "Vent 1", OBJ_FIXTURE,
-                           i ? fixture_pos(2, 2, 3, 3) : fixture_pos(7, 4, 8, 5), 0.0f);
-        begin_draw(s, &vb, M_VENT);
-        fixture(&vb, 1, 1);
-        end_draw(s, &vb);
-        end_object(obj, &vb);
-    }
+    fixture(&vb, 1, 1);
+    end_part(&o->protos[OT_VENT], &vb, M_VENT, 0);
+    end_proto(&o->protos[OT_VENT], OT_VENT, OBJ_FIXTURE, ROOM_H - FIXTURE_DROP);
 
     /* ---- the room itself: fixed ---- */
-    begin_draw(s, &vb, M_BASEBOARD);
+    begin_room_draw(o, &vb, M_BASEBOARD);
     {   /* the texture's height is the board's height; it repeats along the wall */
         const float h = 0.10f, t = 0.012f, su = 0.5f;
         box(&vb, v3(-ROOM_HX, 0, -ROOM_HZ), v3(ROOM_HX, h, -ROOM_HZ + t), su, h);
@@ -471,13 +662,13 @@ int office_build(Office *o, const char *asset_dir) {
         box(&vb, v3(-ROOM_HX, 0, -ROOM_HZ + t), v3(-ROOM_HX + t, h, ROOM_HZ - t), su, h);
         box(&vb, v3(ROOM_HX - t, 0, -ROOM_HZ + t), v3(ROOM_HX, h, ROOM_HZ - t), su, h);
     }
-    end_draw(s, &vb);
+    end_room_draw(o, &vb);
 
-    begin_draw(s, &vb, M_FLOOR); /* planks run across the room (along x) */
+    begin_room_draw(o, &vb, M_FLOOR); /* planks run across the room (along x) */
     quad_tiled(&vb, v3(0, 0, 0), v3(ROOM_HX, 0, 0), v3(0, 0, -ROOM_HZ), 4.0f, 1.25f);
-    end_draw(s, &vb);
+    end_room_draw(o, &vb);
 
-    begin_draw(s, &vb, M_WALL);
+    begin_room_draw(o, &vb, M_WALL);
     {
         const float su = 3.0f, sv = 2.0f, hy = ROOM_H * 0.5f;
         quad_tiled(&vb, v3(0, hy, -ROOM_HZ), v3(ROOM_HX, 0, 0), v3(0, hy, 0), su, sv);
@@ -485,22 +676,19 @@ int office_build(Office *o, const char *asset_dir) {
         quad_tiled(&vb, v3(-ROOM_HX, hy, 0), v3(0, 0, -ROOM_HZ), v3(0, hy, 0), su, sv);
         quad_tiled(&vb, v3(ROOM_HX, hy, 0), v3(0, 0, ROOM_HZ), v3(0, hy, 0), su, sv);
     }
-    end_draw(s, &vb);
+    end_room_draw(o, &vb);
 
-    begin_draw(s, &vb, M_CEILING); /* one texture repeat = 3 tiles, so the grid lands on the fixtures */
+    begin_room_draw(o, &vb, M_CEILING); /* one texture repeat = 3 tiles, so the grid lands on the fixtures */
     quad_tiled(&vb, v3(0, ROOM_H, 0), v3(ROOM_HX, 0, 0), v3(0, 0, ROOM_HZ), 3.0f * TILE, 3.0f * TILE);
-    end_draw(s, &vb);
+    end_room_draw(o, &vb);
+    o->room = vb.v;
+    o->room_count = vb.n;
 
     s->room_min = v3(-ROOM_HX, 0, -ROOM_HZ);
     s->room_max = v3(ROOM_HX, ROOM_H, ROOM_HZ);
     s->env_pos = v3(0.0f, 1.5f, 0.6f);
 
-    /* ---- upload ---- */
-    s->vertex_count = vb.n;
-    o->local = vb.v;
-    o->world = (float *)malloc((size_t)vb.n * 8 * sizeof(float));
-    if (!o->world) return 0;
-    memcpy(o->world, o->local, (size_t)vb.n * 8 * sizeof(float));
+    /* ---- vertex buffer: filled by office_update ---- */
     glGenVertexArrays(1, &s->vao);
     glBindVertexArray(s->vao);
     glGenBuffers(1, &s->vbo);
@@ -512,7 +700,7 @@ int office_build(Office *o, const char *asset_dir) {
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
-    office_update(o); /* places the objects and fills the buffer */
+    office_reset(o); /* the designed layout: places the objects and fills the buffer */
 
     o->spawn = v3(0.0f, 0.0f, 2.3f);
     o->spawn_yaw = 0.0f;

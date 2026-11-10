@@ -77,6 +77,12 @@ typedef struct {
     float ao_direct;       /* how much of the AO also darkens direct light (0 = physically strict) */
     float reflection;      /* scale on all specular */
     float saturation, contrast, vignette;
+    float dof_strength;    /* near-field depth of field: 0 = off, 1 = the default blur size */
+    float dof_start;       /* metres: anything nearer than this starts to go soft */
+    float dof_edge;        /* blur towards the borders of the screen, like a soft lens: 0 = none, 1 = full blur in the corners */
+    float dof_full;        /* metres: fully blurred at this distance and closer */
+    float dof_defocus;     /* whole picture out of focus, 0..1: for a lens that is still finding focus */
+    float lens_curve;      /* barrel distortion: straight lines bow outwards towards the screen sides. 0 = none */
     int msaa;              /* 2, 4 or 8 */
 } IntLook;
 
@@ -87,7 +93,7 @@ enum {
 const char *interior_view_name(int view);
 
 typedef struct {
-    Program fwd, depth, gbuf, ao, blur, post, prefilter;
+    Program fwd, depth, gbuf, ao, blur, post, prefilter, dof, dof_mix;
     GLuint fwd_cached; GLint loc[40];
     GLuint fs_vao, white_tex, flat_normal_tex;
 
@@ -116,13 +122,17 @@ typedef struct {
     unsigned dirty;          /* INT_DIRTY_* */
     double step_ms;          /* cost of the last interior_bake_step */
 
+    float cam_roll;          /* radians about the view axis, positive leans the head right */
     GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
+    int out_x, out_y;        /* its lower left corner there, in pixels (an editor draws the view inside its panels) */
 
     /* sized to the window */
     int w, h, samples;
     GLuint scene_fbo, scene_color, scene_depth;
     GLuint pre_fbo, pre_normal, pre_depth;
     GLuint ao_fbo[2], ao_tex[2];
+    GLuint ldr_fbo, ldr_tex;   /* graded frame, near-field blur amount in alpha */
+    GLuint dof_fbo, dof_tex;   /* half resolution: the blurred foreground and how much of it covers each pixel */
 } IntRenderer;
 
 IntLook interior_default_look(void);

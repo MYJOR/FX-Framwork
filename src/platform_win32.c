@@ -3,6 +3,7 @@
 #include <windowsx.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
@@ -293,7 +294,12 @@ void platform_pace(double fps) {
         next += period;
         if (next < now - period) next = now;      /* hitched: resync instead of bursting to catch up */
         int guard = 0;
+        /* always land on a refresh, unless the frame is already a whole refresh late */
+        if (now < next + vperiod) { g_dwm_flush(); now = platform_time(); guard++; }
         while (now + 0.5 * vperiod < next && guard++ < 64) { g_dwm_flush(); now = platform_time(); }
+        /* Lock the slot clock onto the refresh beat. Left free-running it can sit half a refresh away from the
+           flush times, where timer noise decides between one refresh more or less and frames come out 1-3-1-3. */
+        if (guard > 0 && fabs(now - next) < vperiod) next += (now - next) * 0.25;
         return;
     }
     platform_frame_limit(fps);

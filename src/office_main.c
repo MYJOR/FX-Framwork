@@ -18,20 +18,26 @@
  *   Y    scene editor: frees the cursor and opens the panel (src/office_editor.c). Objects are
  *        moved in the view and the lighting is rebaked as they move. Hold the right mouse button
  *        to look around while editing.
- *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F5 vsync
+ *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F5 vsync
  *   - / = exposure                  Esc quit (in the editor: deselect, then back to playing)
  *   gamepad: left stick move, right stick look, RT run, B crouch
  */
 
-#define TARGET_FPS 60.0f
+#define PLAY_FPS 30.0f /* play mode is locked to this */
+#define EDIT_FPS 60.0f /* the editor keeps the faster rate for dragging */
 #define PI 3.14159265f
 
 #define EYE_STAND 1.64f
 #define EYE_CROUCH 1.05f
 #define PLAYER_RADIUS 0.27f
-#define WALK_SPEED 2.1f
+#define WALK_SPEED 1.5f
 #define RUN_SPEED 3.9f
 #define CROUCH_SPEED 1.1f
+#define TILT_RATE 3.5f /* 1/s: how quickly the camera tilt follows the movement; lower = lazier */
+#define ZOOM_FACTOR 2.2f /* magnification while the right mouse button is held */
+#define ZOOM_RATE 10.0f  /* 1/s: how quickly the zoom eases in and out */
+#define FOCUS_RATE 4.0f  /* 1/s: how quickly the lens finds focus again after the zoom changed */
+#define FOCUS_BLUR 2.4f  /* how far out of focus it gets on the way */
 #define MOUSE_SENS 0.0021f /* radians per mouse count */
 #define LIVE_BAKE_BUDGET_MS 6.0 /* per frame, for the bounce light while the scene is edited */
 
@@ -41,6 +47,7 @@ typedef struct {
     float yaw, pitch;
     float eye;     /* current eye height, eased between standing and crouching */
     float bob_phase, bob_amount;
+    float tilt;    /* camera roll, eased */
 } FpsPlayer;
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -96,9 +103,11 @@ static void player_step(FpsPlayer *p, const Office *o, float dt, float move_x, f
     p->bob_amount += (clampf(v / WALK_SPEED, 0.0f, 1.2f) - p->bob_amount) * (1.0f - expf(-8.0f * dt));
 }
 
-static V3 player_eye(const FpsPlayer *p) {
-    float side = cosf(p->bob_phase) * 0.006f * p->bob_amount;
-    float up = -fabsf(sinf(p->bob_phase)) * 0.014f * p->bob_amount;
+/* bob: 1 in play mode, 0 in the editor where the camera should hold still */
+static V3 player_eye(const FpsPlayer *p, float bob) {
+    float dip = sinf(p->bob_phase);
+    float side = cosf(p->bob_phase) * 0.006f * p->bob_amount * bob;
+    float up = -dip * dip * 0.014f * p->bob_amount * bob; /* smooth dip at each footfall */
     return v3(p->pos.x + cosf(p->yaw) * side, p->pos.y + p->eye + up, p->pos.z + sinf(p->yaw) * side);
 }
 
@@ -131,19 +140,25 @@ int main(int argc, char **argv) {
     const char *shot = NULL;
     int win_w = 1280, win_h = 720, arg_view = INT_VIEW_FINAL, bench = 0, have_pos = 0;
     /* for testing the editor from the command line */
-    int arg_edit = 0, arg_select = -1, arg_place = -1, arg_frames = 3, arg_fullbake = 0, headless = 0;
+    int arg_edit = 0, arg_select = -1, arg_place = -1, arg_frames = 3, arg_fullbake = 0, headless = 0, pace_test = 0;
     float place_x = 0, place_z = 0, place_yaw = 0;
     int have_drag = 0; float drag[4] = {0}, arg_wheel = 0;
     int axis_drag = -1; float axis_pixels = 0;
     int ring_drag = 0; float ring_deg = 0, ring_from = 0;
-    float arg_x = 0, arg_z = 0, arg_yaw = 0, arg_pitch = -0.06f, arg_eye = 0;
+    float arg_x = 0, arg_z = 0, arg_yaw = 0, arg_pitch = -0.06f, arg_eye = 0, arg_roll = 0;
     IntLook look = interior_default_look();
+    float lens_curve = look.lens_curve;
+    int arg_zoom = 0, default_scene = 0;
+    const char *cmds[16]; int cmd_count = 0; /* editor commands to run, one every other frame */
+    float focus = 0.0f; /* the zoom the lens is focused for; trails behind zoom */
+    float zoom = 0.0f, base_tan = 0.0f; /* 0..1 eased zoom; tan(half fov) when not zoomed */
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
         else if (!strcmp(argv[i], "--pos") && i + 2 < argc) { arg_x = (float)atof(argv[++i]); arg_z = (float)atof(argv[++i]); have_pos = 1; }
         else if (!strcmp(argv[i], "--yaw") && i + 1 < argc) arg_yaw = (float)atof(argv[++i]) * PI / 180.0f;
         else if (!strcmp(argv[i], "--pitch") && i + 1 < argc) arg_pitch = (float)atof(argv[++i]) * PI / 180.0f;
+        else if (!strcmp(argv[i], "--roll") && i + 1 < argc) arg_roll = (float)atof(argv[++i]) * PI / 180.0f; /* test: fixed tilt */
         else if (!strcmp(argv[i], "--eye") && i + 1 < argc) arg_eye = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--fov") && i + 1 < argc) look.fov = (float)atof(argv[++i]) * PI / 180.0f;
         else if (!strcmp(argv[i], "--view") && i + 1 < argc) arg_view = atoi(argv[++i]) % INT_VIEW_COUNT;
@@ -154,6 +169,7 @@ int main(int argc, char **argv) {
             place_yaw = (float)atof(argv[++i]) * PI / 180.0f;
         }
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) arg_frames = atoi(argv[++i]); /* frames before --shot */
+        else if (!strcmp(argv[i], "--pace-test")) pace_test = 1; /* runs paced frames, prints how even they were */
         else if (!strcmp(argv[i], "--headless")) headless = 1;  /* hidden window, frames go to an offscreen target */
         else if (!strcmp(argv[i], "--drag") && i + 4 < argc) {  /* synthetic mouse drag in window pixels: x0 y0 x1 y1 */
             for (int k = 0; k < 4; k++) drag[k] = (float)atof(argv[++i]);
@@ -171,6 +187,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--msaa") && i + 1 < argc) look.msaa = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--exposure") && i + 1 < argc) look.exposure = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--noao")) look.ao_strength = 0.0f;
+        else if (!strcmp(argv[i], "--nodof")) look.dof_strength = 0.0f;
+        else if (!strcmp(argv[i], "--nolens")) lens_curve = 0.0f;
+        else if (!strcmp(argv[i], "--default-scene")) default_scene = 1; /* ignore the saved scene file */
+        else if (!strcmp(argv[i], "--cmd") && i + 1 < argc) { if (cmd_count < 16) cmds[cmd_count++] = argv[++i]; else i++; } /* test: an editor command */
+        else if (!strcmp(argv[i], "--zoom")) arg_zoom = 1; /* test: as if the right mouse button were held */
         else if (!strcmp(argv[i], "--bench")) bench = 1; /* uncapped, prints frame times, exits */
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
     }
@@ -182,7 +203,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     int vsync = !(bench || shot);
-    platform_set_target_fps((int)TARGET_FPS);
+    float paced_fps = arg_edit ? EDIT_FPS : PLAY_FPS;
+    platform_set_target_fps((int)paced_fps);
     platform_pace_init();
     platform_set_vsync(vsync);
     platform_set_event_hook(editor_event, NULL);
@@ -203,8 +225,13 @@ int main(int argc, char **argv) {
     if (!interior_init(&renderer)) { fprintf(stderr, "shader load failed\n"); return 1; }
     double t_load = platform_time();
     if (!office_build(&office, asset_dir)) return 1;
+    /* the scene as it was last saved from the editor, if there is one */
+    char scene_path[320];
+    snprintf(scene_path, sizeof scene_path, "%s/../office_scene.txt", asset_dir);
+    int scene_loaded = !default_scene && office_load(&office, scene_path);
     double load_ms = (platform_time() - t_load) * 1000.0;
     interior_bake(&renderer, &office.scene, &look);
+    if (scene_loaded) printf("office: loaded %d objects from %s\n", office.object_count, scene_path);
     printf("office: %d triangles, assets %.0f ms, light bake %.0f ms (%d x %d x %d probes)\n",
            office.scene.vertex_count / 3, load_ms, renderer.bake_ms,
            renderer.probe_n[0], renderer.probe_n[1], renderer.probe_n[2]);
@@ -233,6 +260,7 @@ int main(int argc, char **argv) {
     ed.view = arg_view;
     ed.vsync = vsync;
     ed.active = arg_edit;
+    snprintf(ed.scene_path, sizeof ed.scene_path, "%s", scene_path);
     if (arg_select >= 0 && arg_select < office.object_count) ed.selected = arg_select;
     if (!shot && !bench && !ed.active) platform_capture_mouse(1);
 
@@ -247,6 +275,7 @@ int main(int argc, char **argv) {
     int key_was[256] = {0};
     double last = platform_time(), reload_timer = 0, title_timer = 0, bench_t0 = 0;
     double frame_acc = 0; int frame_n = 0, frame = 0;
+    double pace_sum = 0, pace_min = 1e9, pace_max = 0, pace_dev = 0; int pace_n = 0, pace_bad = 0;
 
     while (!plat.quit) {
         platform_poll(&plat);
@@ -254,7 +283,18 @@ int main(int argc, char **argv) {
         float dt = (float)(now - last);
         last = now;
         frame_acc += dt; frame_n++;
+        if (pace_test && frame > 30) {
+            double ms = dt * 1000.0, off = fabs(ms - 1000.0 / paced_fps);
+            pace_sum += ms; pace_n++;
+            if (ms < pace_min) pace_min = ms;
+            if (ms > pace_max) pace_max = ms;
+            if (off > pace_dev) pace_dev = off;
+            if (off > 2.0) pace_bad++;
+        }
         if (dt > 0.05f) dt = 0.05f;
+        /* Paced frames are shown exactly one period apart, so step the world by exactly one period: the few
+           hundred microseconds the timer wobbles would otherwise show up as uneven motion at 30 fps. */
+        if (!bench && fabsf(dt * paced_fps - 1.0f) < 0.3f) dt = 1.0f / paced_fps;
 
         static Gamepad pad;
         gamepad_poll(&pad);
@@ -278,6 +318,8 @@ int main(int argc, char **argv) {
                 printf("ring: (%.0f, %.0f) to (%.0f, %.0f)\n", a[0], a[1], b[0], b[1]);
             } else printf("rotate ring not on screen\n");
         }
+        if (frame >= 3 && (frame - 3) % 2 == 0 && (frame - 3) / 2 < cmd_count && !editor_command(cmds[(frame - 3) / 2]))
+            printf("unknown editor command %s\n", cmds[(frame - 3) / 2]);
         if (have_drag || arg_wheel != 0.0f) { /* scripted input, through the same hook as the real mouse */
             const int t0 = 5, steps = 20;
             PlatEvent e;
@@ -301,28 +343,52 @@ int main(int argc, char **argv) {
             if (ed.selected >= 0) ed.selected = -1;
             else { ed.active = 0; platform_capture_mouse(1); }
         }
-        if (PRESSED('Y') && !typing && !shot && !bench) { /* play <-> edit, in place */
+        int ctrl = plat.keys[VK_CONTROL] != 0; /* Ctrl + key is an editor shortcut (Ctrl Y = redo) */
+        if (((PRESSED('Y') && !typing && !ctrl) || ed.play) && !shot && !bench) { /* play <-> edit, in place */
             ed.active = !ed.active;
             platform_capture_mouse(!ed.active);
         }
         if (ed.active && !typing) { /* gizmo tools */
-            if (PRESSED('G')) ed.tool = EDIT_TOOL_MOVE;
-            if (PRESSED('R')) ed.tool = EDIT_TOOL_ROTATE;
+            if (PRESSED('Q') && !ctrl) ed.tool = EDIT_TOOL_SELECT;
+            if (PRESSED('G') && !ctrl) ed.tool = EDIT_TOOL_MOVE;
+            if (PRESSED('R') && !ctrl) ed.tool = EDIT_TOOL_ROTATE;
         }
         if (PRESSED(VK_F1)) ed.view = (ed.view + (plat.keys[VK_SHIFT] ? INT_VIEW_COUNT - 1 : 1)) % INT_VIEW_COUNT;
         if (PRESSED(VK_F2)) ed.ao = !ed.ao;
         if (PRESSED(VK_F3)) ed.reflections = !ed.reflections;
+        if (PRESSED(VK_F4)) ed.dof = !ed.dof;
         if (PRESSED(VK_F5)) { ed.vsync = !ed.vsync; platform_set_vsync(ed.vsync); }
         if (!typing) {
             if (plat.keys[VK_OEM_MINUS]) look.exposure *= expf(-0.8f * dt);
             if (plat.keys[VK_OEM_PLUS]) look.exposure *= expf(0.8f * dt);
         }
+        ed.play = 0;
+        if (ed.focus >= 0 && ed.focus < office.object_count) { /* the editor asked for the camera to frame an object */
+            const OfficeObject *obj = &office.objects[ed.focus];
+            V3 c = office_object_to_world(obj, v3((obj->bmin.x + obj->bmax.x) * 0.5f, (obj->bmin.y + obj->bmax.y) * 0.5f,
+                                                  (obj->bmin.z + obj->bmax.z) * 0.5f));
+            float dx = c.x - player.pos.x, dz = c.z - player.pos.z, dist = sqrtf(dx * dx + dz * dz);
+            float want = dist > 3.0f ? 2.4f : (dist < 1.0f ? 1.6f : dist); /* step closer or back to a comfortable distance */
+            if (dist > 1e-3f && want != dist) {
+                player.pos.x = c.x - dx / dist * want; player.pos.z = c.z - dz / dist * want;
+                player.vx = player.vz = 0.0f;
+                collide(&player, &office);
+                dx = c.x - player.pos.x; dz = c.z - player.pos.z; dist = sqrtf(dx * dx + dz * dz);
+            }
+            if (dist > 1e-3f) {
+                player.yaw = atan2f(dx, -dz);
+                player.pitch = clampf(atan2f(c.y - (player.pos.y + player.eye), dist), -1.45f, 1.45f);
+            }
+        }
+        ed.focus = -1;
         /* while playing, a click takes the mouse back after the window lost it */
         if (editor_clicked() && !ed.active && !platform_mouse_captured() && !shot && !bench) platform_capture_mouse(1);
 #undef PRESSED
         for (int k = 0; k < 256; k++) key_was[k] = plat.keys[k];
         look.ao_strength = ed.ao ? ed.ao_strength : 0.0f;
         look.reflection = ed.reflections ? 1.0f : 0.0f;
+        look.dof_strength = (ed.dof && !ed.active) ? 1.0f : 0.0f; /* the editor stays sharp */
+        look.lens_curve = ed.active ? 0.0f : lens_curve;                /* ... and straight, so picking lines up */
 
         /* apply what the editor changed last frame, then let the lighting catch up */
         if (edit_flags & EDIT_VSYNC) platform_set_vsync(ed.vsync);
@@ -336,10 +402,23 @@ int main(int argc, char **argv) {
         if (ed.live) interior_bake_step(&renderer, &office.scene, &look, LIVE_BAKE_BUDGET_MS);
         edit_flags = 0;
 
+        /* zoom: hold the right mouse button while playing (in the editor that button looks around) */
+        if (base_tan == 0.0f) base_tan = tanf(look.fov * 0.5f);
+        int zooming = arg_zoom || (!ed.active && plat.rmb && platform_mouse_captured());
+        zoom += ((zooming ? 1.0f : 0.0f) - zoom) * (1.0f - expf(-ZOOM_RATE * dt));
+        if (zoom < 0.001f && !zooming) zoom = 0.0f;
+        float zoom_tan = base_tan / (1.0f + (ZOOM_FACTOR - 1.0f) * zoom);
+        look.fov = 2.0f * atanf(zoom_tan);
+        look.lens_curve *= zoom_tan / base_tan; /* a longer lens bends less */
+        /* the lens refocuses a moment after the zoom: the picture goes soft, then pulls sharp */
+        focus += (zoom - focus) * (1.0f - expf(-FOCUS_RATE * dt));
+        look.dof_defocus = ed.active ? 0.0f : clampf(fabsf(zoom - focus) * FOCUS_BLUR - 0.02f, 0.0f, 1.0f);
+        float sens = MOUSE_SENS * zoom_tan / base_tan; /* the view turns as far on screen per mouse count as before */
+
         /* look */
         if (platform_mouse_captured() || (ed.active && plat.rmb)) {
-            player.yaw += (float)plat.mouse_dx * MOUSE_SENS;
-            player.pitch -= (float)plat.mouse_dy * MOUSE_SENS;
+            player.yaw += (float)plat.mouse_dx * sens;
+            player.pitch -= (float)plat.mouse_dy * sens;
         }
         player.yaw += pad.rx * 2.4f * dt;
         player.pitch += pad.ry * 1.7f * dt;
@@ -349,7 +428,7 @@ int main(int argc, char **argv) {
         V3 f = cam_forward(player.yaw, 0.0f);
         V3 right = v3(-f.z, 0, f.x);
         float mx = 0, mz = 0;
-        if (!typing) {
+        if (!typing && !(ed.active && ctrl)) {
             if (plat.keys['W']) { mx += f.x; mz += f.z; }
             if (plat.keys['S']) { mx -= f.x; mz -= f.z; }
             if (plat.keys['D']) { mx += right.x; mz += right.z; }
@@ -358,7 +437,7 @@ int main(int argc, char **argv) {
         mx += f.x * pad.ly + right.x * pad.lx;
         mz += f.z * pad.ly + right.z * pad.lx;
         int run = plat.keys[VK_SHIFT] || pad.rt > 0.5f;
-        int crouch = plat.keys[VK_CONTROL] || (pad.buttons & GP_B);
+        int crouch = (plat.keys[VK_CONTROL] && !ed.active) || (pad.buttons & GP_B); /* Ctrl is for shortcuts in the editor */
         if (!(shot && arg_eye > 0.0f)) player_step(&player, &office, dt, mx, mz, run, crouch);
 
         reload_timer += dt;
@@ -367,8 +446,17 @@ int main(int argc, char **argv) {
             if (interior_reload_shaders(&renderer)) interior_bake(&renderer, &office.scene, &look);
         }
 
-        V3 eye = player_eye(&player), fwd = cam_forward(player.yaw, player.pitch);
-        interior_render(&renderer, &office.scene, &look, eye, fwd, editor_view_width(&ed, plat.width), plat.height, ed.view);
+        /* camera tilt: rocks with each step and leans into a strafe; play mode only */
+        float lateral = (player.vx * right.x + player.vz * right.z) / WALK_SPEED;
+        float tilt = cosf(player.bob_phase) * 0.010f * player.bob_amount + clampf(lateral, -1.5f, 1.5f) * 0.022f;
+        player.tilt += (tilt - player.tilt) * (1.0f - expf(-TILT_RATE * dt));
+        renderer.cam_roll = ed.active ? 0.0f : player.tilt + arg_roll;
+        V3 eye = player_eye(&player, ed.active ? 0.0f : 1.0f), fwd = cam_forward(player.yaw, player.pitch);
+        int view_rect[4]; /* the whole window while playing, the space between the panels while editing */
+        editor_view_rect(&ed, plat.width, plat.height, view_rect);
+        renderer.out_x = view_rect[0];
+        renderer.out_y = plat.height - (view_rect[1] + view_rect[3]);
+        interior_render(&renderer, &office.scene, &look, eye, fwd, view_rect[2], view_rect[3], ed.view);
         edit_flags = editor_frame(&ed, &office, &look, &renderer, eye, fwd, plat.width, plat.height, dt);
         if (bench && arg_place >= 0 && arg_place < office.object_count) { /* benchmark a drag: the object moves every frame */
             OfficeObject *obj = &office.objects[arg_place];
@@ -381,11 +469,11 @@ int main(int argc, char **argv) {
         if (shot && frame >= arg_frames) {
             glBindFramebuffer(GL_FRAMEBUFFER, renderer.out_fbo);
             save_screenshot(shot, plat.width, plat.height);
-            if (have_drag || arg_wheel != 0.0f) /* what the scripted input did */
+            if (have_drag || arg_wheel != 0.0f || cmd_count) /* what the scripted input did */
                 for (int i = 0; i < office.object_count; i++) {
                     const OfficeObject *obj = &office.objects[i];
-                    printf("%s%-10s x %+.2f  z %+.2f  yaw %+.0f\n", i == ed.selected ? "* " : "  ", obj->name, obj->pos.x, obj->pos.z,
-                           obj->yaw * 180.0f / PI);
+                    printf("%s%-14s x %+.2f  z %+.2f  yaw %+.0f%s%s\n", i == ed.selected ? "* " : "  ", obj->name, obj->pos.x, obj->pos.z,
+                           obj->yaw * 180.0f / PI, obj->visible ? "" : "  hidden", obj->locked ? "  locked" : "");
                 }
             break;
         }
@@ -400,7 +488,14 @@ int main(int argc, char **argv) {
                 break;
             }
         } else {
-            platform_pace(TARGET_FPS);
+            float want = ed.active ? EDIT_FPS : PLAY_FPS;
+            if (want != paced_fps) { paced_fps = want; platform_set_target_fps((int)paced_fps); platform_set_vsync(ed.vsync); }
+            platform_pace(paced_fps);
+            if (pace_test && frame >= 150) {
+                printf("pace: target %.0f fps, mean %.2f ms, min %.2f, max %.2f, worst deviation %.2f ms, %d of %d frames off by over 2 ms\n", paced_fps,
+                       pace_sum / pace_n, pace_min, pace_max, pace_dev, pace_bad, pace_n);
+                break;
+            }
         }
 
         title_timer += dt;

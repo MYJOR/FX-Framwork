@@ -52,6 +52,12 @@ IntLook interior_default_look(void) {
     l.saturation = 1.04f;
     l.contrast = 1.06f;
     l.vignette = 0.10f;
+    l.dof_strength = 1.0f;
+    l.dof_start = 0.80f;
+    l.dof_full = 0.22f;
+    l.dof_edge = 0.65f;
+    l.dof_defocus = 0.0f;
+    l.lens_curve = 0.035f;
     l.msaa = 4;
     return l;
 }
@@ -228,6 +234,8 @@ int interior_init(IntRenderer *r) {
         !shader_program_load(&r->ao, "interior_fs.vert", "interior_ao.frag") ||
         !shader_program_load(&r->blur, "interior_fs.vert", "interior_ao_blur.frag") ||
         !shader_program_load(&r->post, "interior_fs.vert", "interior_post.frag") ||
+        !shader_program_load(&r->dof, "interior_fs.vert", "interior_dof.frag") ||
+        !shader_program_load(&r->dof_mix, "interior_fs.vert", "interior_dof_mix.frag") ||
         !shader_program_load(&r->prefilter, "interior_fs.vert", "interior_prefilter.frag"))
         return 0;
     glGenVertexArrays(1, &r->fs_vao);
@@ -240,6 +248,8 @@ int interior_init(IntRenderer *r) {
     glGenFramebuffers(1, &r->scene_fbo);
     glGenFramebuffers(1, &r->pre_fbo);
     glGenFramebuffers(2, r->ao_fbo);
+    glGenFramebuffers(1, &r->ldr_fbo);
+    glGenFramebuffers(1, &r->dof_fbo);
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     return 1;
 }
@@ -253,6 +263,8 @@ int interior_reload_shaders(IntRenderer *r) {
     shader_reload_if_changed(&r->ao);
     shader_reload_if_changed(&r->blur);
     shader_reload_if_changed(&r->post);
+    shader_reload_if_changed(&r->dof);
+    shader_reload_if_changed(&r->dof_mix);
     /* probes and the reflection probe are rendered with the forward shader */
     return r->fwd.id != before || r->prefilter.id != before_pf;
 }
@@ -639,8 +651,8 @@ static void ensure_targets(IntRenderer *r, int w, int h, int samples) {
     if (samples != 2 && samples != 8) samples = 4;
     if (r->w == w && r->h == h && r->samples == samples) return;
     if (r->scene_color) {
-        GLuint old[6] = {r->scene_color, r->scene_depth, r->pre_normal, r->pre_depth, r->ao_tex[0], r->ao_tex[1]};
-        glDeleteTextures(6, old);
+        GLuint old[8] = {r->scene_color, r->scene_depth, r->pre_normal, r->pre_depth, r->ao_tex[0], r->ao_tex[1], r->ldr_tex, r->dof_tex};
+        glDeleteTextures(8, old);
     }
     r->w = w; r->h = h; r->samples = samples;
 
@@ -668,6 +680,15 @@ static void ensure_targets(IntRenderer *r, int w, int h, int samples) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->ao_tex[i], 0);
         check_fbo("ambient obscurance");
     }
+
+    r->ldr_tex = make_tex2d(GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, NULL, GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, r->ldr_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->ldr_tex, 0);
+    check_fbo("depth of field source");
+    r->dof_tex = make_tex2d(GL_RGBA8, (w + 1) / 2, (h + 1) / 2, GL_RGBA, GL_UNSIGNED_BYTE, NULL, GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, r->dof_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->dof_tex, 0);
+    check_fbo("depth of field blur");
 }
 
 void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 cam, V3 fwd, int w, int h, int view) {
@@ -675,6 +696,12 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     ensure_targets(r, w, h, look->msaa);
     float aspect = (float)w / (float)h, tan_half = tanf(look->fov * 0.5f);
     M4 view_m = m4_view(cam, fwd);
+    if (r->cam_roll != 0.0f) {
+        M4 roll = m4_identity();
+        float c = cosf(r->cam_roll), sn = sinf(r->cam_roll);
+        roll.m[0] = c; roll.m[1] = sn; roll.m[4] = -sn; roll.m[5] = c;
+        view_m = m4_mul(roll, view_m);
+    }
     M4 vp = m4_mul(m4_perspective(look->fov, aspect, CAM_NEAR, CAM_FAR), view_m);
     int use_ao = look->ao_strength > 0.0f;
 
@@ -735,8 +762,11 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     }
     draw_scene(r, s, 1, 0, 1);
 
-    /* resolve, tonemap and grade to the window */
-    glBindFramebuffer(GL_FRAMEBUFFER, r->out_fbo);
+    /* resolve, tonemap and grade: to the window, or to a texture when the near field gets blurred after */
+    int dof = look->dof_strength > 0.0f && view == INT_VIEW_FINAL && look->dof_start > look->dof_full && look->dof_full > 0.0f;
+    int lens = look->lens_curve > 0.0f && view == INT_VIEW_FINAL;
+    glBindFramebuffer(GL_FRAMEBUFFER, (dof || lens) ? r->ldr_fbo : r->out_fbo);
+    if (!(dof || lens)) glViewport(r->out_x, r->out_y, w, h);
     glDisable(GL_DEPTH_TEST);
     GLuint p = r->post.id;
     glUseProgram(p);
@@ -744,11 +774,51 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_color);
     glUniform1i(ul(p, "uScene"), 0);
     glUniform1i(ul(p, "uSamples"), r->samples);
+    glUniform2f(ul(p, "uOrigin"), (dof || lens) ? 0.0f : (float)r->out_x, (dof || lens) ? 0.0f : (float)r->out_y);
     int raw = view == INT_VIEW_ALBEDO || view == INT_VIEW_NORMAL || view == INT_VIEW_AO ||
               view == INT_VIEW_SHADOW || view == INT_VIEW_ROUGHNESS;
     glUniform1i(ul(p, "uRaw"), raw);
     glUniform4f(ul(p, "uGrade"), look->exposure, look->saturation, look->contrast, look->vignette);
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_depth);
+    glUniform1i(ul(p, "uSceneDepth"), 1);
+    /* blur grows with 1/distance, like a lens focused far away: 0 at dof_start, 1 at dof_full */
+    if (dof) glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 1.0f / look->dof_start, 1.0f / (1.0f / look->dof_full - 1.0f / look->dof_start));
+    else glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 0.0f, 0.0f);
+    glUniform2f(ul(p, "uDofEdge"), look->dof_edge, look->dof_defocus);
     glBindVertexArray(r->fs_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+
+    glViewport(0, 0, w, h);
+    if (dof || lens) glBindTexture(GL_TEXTURE_2D, r->ldr_tex);
+    if (dof) {
+        /* the foreground, blurred at half resolution and spread past its own outline */
+        int hw = (w + 1) / 2, hh = (h + 1) / 2;
+        glBindFramebuffer(GL_FRAMEBUFFER, r->dof_fbo);
+        glViewport(0, 0, hw, hh);
+        p = r->dof.id;
+        glUseProgram(p);
+        glUniform1i(ul(p, "uTex"), 0);
+        glUniform2f(ul(p, "uInvScreen"), 1.0f / (float)w, 1.0f / (float)h);
+        glUniform1f(ul(p, "uRadius"), 0.022f * (float)h * look->dof_strength);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+    if (dof || lens) {
+        /* laid over the sharp frame, through the lens */
+        glBindFramebuffer(GL_FRAMEBUFFER, r->out_fbo);
+        glViewport(r->out_x, r->out_y, w, h);
+        p = r->dof_mix.id;
+        glUseProgram(p);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        glBindTexture(GL_TEXTURE_2D, r->dof_tex);
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(ul(p, "uSharp"), 0);
+        glUniform1i(ul(p, "uNear"), 1);
+        glUniform1i(ul(p, "uUseNear"), dof);
+        glUniform2f(ul(p, "uLens"), lens ? look->lens_curve : 0.0f, aspect);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
 }
