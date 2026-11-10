@@ -1,0 +1,9 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: cui
+Description: Modern native UI components for C
+Version: 1.2.0
+Cflags: -I${includedir}
+Libs: -L${libdir} -lcui

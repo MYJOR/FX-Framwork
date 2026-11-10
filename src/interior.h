@@ -99,6 +99,12 @@ typedef struct {
     float dof_edge;        /* blur towards the borders of the screen, like a soft lens: 0 = none, 1 = full blur in the corners */
     float dof_full;        /* metres: fully blurred at this distance and closer */
     float dof_defocus;     /* whole picture out of focus, 0..1: for a lens that is still finding focus */
+    float dof_hand;        /* 0..1: the lens is focused on what the player holds (IntRenderer.held_draw) instead of
+                              the room. At 1 the held thing is sharp and the room behind it goes soft. */
+    float dof_hand_blur;   /* how soft the held thing is while the lens is on the room, 0..1 of the full blur */
+    float dof_room_blur;   /* how soft the room gets while the lens is on the held thing, 0..1 of the full blur */
+    float dof_hand_dist;   /* metres: where the lens focuses for the held thing */
+    float dof_room_full;   /* metres: the room is at dof_room_blur from here on; nearer things are less soft */
     float bloom;           /* glow around what is brighter than the display can show. 0 = off */
     float air;             /* how much the torch beam shows in the air. 0 = off */
     float grain, grain_size; /* film grain over the whole picture (0 = none), in pixels */
@@ -116,6 +122,23 @@ enum {
     INT_VIEW_INDIRECT, INT_VIEW_AO, INT_VIEW_SHADOW, INT_VIEW_ROUGHNESS, INT_VIEW_SPECULAR, INT_VIEW_COUNT
 };
 const char *interior_view_name(int view);
+
+/* Something the player holds up in front of the camera (the motion tracker). It is drawn by its owner,
+   after the room and into the same HDR target, so it gets the same exposure, bloom, grade and lens. The
+   owner must write alpha 0: that is how the depth of field tells it from the room (see IntLook.dof_hand).
+   On entry: depth test and depth writes on, blending off, culling off. Leave it that way. */
+typedef struct {
+    M4 view;            /* world -> eye, with the camera's roll */
+    V3 cam;
+    float aspect;
+    float near_z, far_z; /* the scene's depth range: use the same one */
+    float sh[3][4];     /* light arriving at the hand, per colour channel: irradiance / pi = L0 + dot(L1, n) */
+    float scene_light;  /* master switch of the room's own lights, 0..1: scales sh, the lights and env_tex */
+    GLuint env_tex;     /* reflection probe (cube map) of the room the camera is in */
+    float env_max_lod;  /* its mip for roughness 1 */
+    GLuint exposure_tex; /* one texel, r = the gain the eye adaptation adds */
+} IntHeldView;
+typedef void (*IntHeldFn)(void *user, const IntScene *s, const IntHeldView *v);
 
 typedef struct {
     Program fwd, depth, gbuf, ao, blur, post, prefilter, dof, dof_mix, meter, adapt, bounce, glow, glow_blur;
@@ -164,6 +187,8 @@ typedef struct {
     float grain_seed;        /* changes every frame so the low light noise moves */
     GLuint meter_fbo, meter_tex, expo_fbo[2], expo_tex[2]; int expo_cur; /* light meter, adapted exposure gain */
     float scene_light;       /* scales everything the scene's own lights contribute: 1 = on, 0 = dark. No rebake needed. */
+    IntHeldFn held_draw;     /* draws what the player holds, or NULL. Final view only. */
+    void *held_user;
     GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
     int out_x, out_y;        /* its lower left corner there, in pixels (an editor draws the view inside its panels) */
 
@@ -197,6 +222,8 @@ float interior_bake_progress(const IntRenderer *r); /* 0..1, 1 = settled */
 int interior_reload_shaders(IntRenderer *r);
 /* Debug: the exposure gain the eye adaptation has settled on, and the metered scene luminance. */
 float interior_exposure_gain(IntRenderer *r, float *metered);
+/* Sets the uniforms portalVis() in interior_common.glsl reads, on the program that is bound. */
+void interior_set_portals(GLuint program, const IntScene *s);
 void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 cam, V3 fwd, int w, int h, int view);
 
 #endif

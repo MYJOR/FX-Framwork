@@ -48,6 +48,7 @@ add_executable(office
   src/office_scene.c
   src/office_editor.c
   src/interior.c
+  src/tracker.c
   src/fbx.c
   src/inflate.c
   src/platform_win32.c

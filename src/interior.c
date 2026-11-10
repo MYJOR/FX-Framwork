@@ -67,6 +67,11 @@ IntLook interior_default_look(void) {
     l.dof_full = 0.22f;
     l.dof_edge = 0.65f;
     l.dof_defocus = 0.0f;
+    l.dof_hand = 0.0f;
+    l.dof_hand_blur = 0.80f;
+    l.dof_room_blur = 1.0f;
+    l.dof_hand_dist = 0.42f;
+    l.dof_room_full = 1.5f;
     l.lens_curve = 0.035f;
     l.adapt_max = 5.0f;
     l.grain = 0.0f; l.grain_size = 1.0f;
@@ -172,6 +177,39 @@ static void set_portal(GLuint p, const IntScene *s) {
     glUniform4fv(ul(p, "uPortalArch"), INT_MAX_PORTALS, arch);
     glUniform1i(ul(p, "uPortalCount"), s->portal_count);
 }
+void interior_set_portals(GLuint program, const IntScene *s) { set_portal(program, s); }
+
+/* The probes' light at p, read the way the forward shader reads it: blended between the probes around
+   it, leaving out the dead ones inside walls. */
+static void probe_sh_at(const IntRenderer *r, V3 p, float out[3][4]) {
+    memset(out, 0, 12 * sizeof(float));
+    if (!r->sh_cpu[0] || !r->probe_alive) return;
+    const float pos[3] = {p.x, p.y, p.z}, org[3] = {r->probe_origin.x, r->probe_origin.y, r->probe_origin.z},
+                ext[3] = {r->probe_extent.x, r->probe_extent.y, r->probe_extent.z};
+    int i0[3]; float f[3];
+    for (int a = 0; a < 3; a++) {
+        int n = r->probe_n[a];
+        float g = (pos[a] - org[a]) / ext[a] * (float)n - 0.5f;
+        g = g < 0.0f ? 0.0f : (g > (float)(n - 1) ? (float)(n - 1) : g);
+        i0[a] = (int)g;
+        if (i0[a] > n - 2) i0[a] = n - 2;
+        f[a] = g - (float)i0[a];
+    }
+    float wsum = 0.0f;
+    for (int k = 0; k < 8; k++) {
+        int ix = i0[0] + (k & 1), iy = i0[1] + ((k >> 1) & 1), iz = i0[2] + (k >> 2);
+        float w = ((k & 1) ? f[0] : 1.0f - f[0]) * ((k & 2) ? f[1] : 1.0f - f[1]) * ((k & 4) ? f[2] : 1.0f - f[2]);
+        int id = (iz * r->probe_n[1] + iy) * r->probe_n[0] + ix;
+        if (w <= 0.0f || !r->probe_alive[id]) continue;
+        for (int c = 0; c < 3; c++)
+            for (int q = 0; q < 4; q++) out[c][q] += w * r->sh_cpu[c][(size_t)id * 4 + q];
+        wsum += w;
+    }
+    if (wsum > 1e-4f)
+        for (int c = 0; c < 3; c++)
+            for (int q = 0; q < 4; q++) out[c][q] /= wsum;
+}
+
 /* Binds the forward program with everything that does not change between views. */
 static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, int pass, int view) {
     GLuint p = r->fwd.id;
@@ -1045,6 +1083,26 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
 
     /* eye adaptation: meter the frame, move the exposure gain towards what the meter asks for */
     int adapt = look->adapt_max > 1.0f && view == INT_VIEW_FINAL;
+
+    /* what the player holds, over the room: same target, so everything after this treats it as part of the picture */
+    if (r->held_draw && view == INT_VIEW_FINAL) {
+        IntHeldView hv;
+        memset(&hv, 0, sizeof hv);
+        hv.view = view_m; hv.cam = cam; hv.aspect = aspect;
+        hv.near_z = CAM_NEAR; hv.far_z = CAM_FAR;
+        hv.scene_light = r->scene_light;
+        probe_sh_at(r, v3_add(cam, v3_scale(fwd, 0.2f)), hv.sh);
+        int room = 0;
+        for (int k = 0; k < s->portal_count; k++) if (cam.x > (s->portals[k].x0 + s->portals[k].x1) * 0.5f) room = k + 1;
+        hv.env_tex = r->env_tex[room < s->env_count ? room : 0];
+        hv.env_max_lod = ENV_MAX_LOD;
+        hv.exposure_tex = adapt ? r->expo_tex[r->expo_cur] : r->white_tex; /* last frame's: this frame is not metered yet */
+        glEnable(GL_DEPTH_TEST);
+        r->held_draw(r->held_user, s, &hv);
+        glDisable(GL_CULL_FACE);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
     glDisable(GL_DEPTH_TEST);
     glBindVertexArray(r->fs_vao);
     glActiveTexture(GL_TEXTURE0);
@@ -1160,6 +1218,12 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     if (dof) glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 1.0f / look->dof_start, 1.0f / (1.0f / look->dof_full - 1.0f / look->dof_start));
     else glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 0.0f, 0.0f);
     glUniform2f(ul(p, "uDofEdge"), look->dof_edge, look->dof_defocus);
+    {   /* the lens on the held thing: the room blurs with how far behind the focus it is, again in 1/distance */
+        float inv_hand = 1.0f / (look->dof_hand_dist > 0.05f ? look->dof_hand_dist : 0.05f);
+        float inv_full = 1.0f / (look->dof_room_full > look->dof_hand_dist + 0.05f ? look->dof_room_full : look->dof_hand_dist + 0.05f);
+        glUniform4f(ul(p, "uDofHand"), dof ? look->dof_hand : 0.0f, look->dof_hand_blur, look->dof_room_blur, 0.0f);
+        glUniform2f(ul(p, "uDofFar"), inv_hand, 1.0f / (inv_hand - inv_full));
+    }
     glBindVertexArray(r->fs_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);

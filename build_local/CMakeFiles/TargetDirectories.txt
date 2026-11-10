@@ -1,0 +1,15 @@
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/desert.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/office.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/edit_cache.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/rebuild_cache.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/list_install_components.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/install.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/install/local.dir
+D:/Code Dump/FX-Framwork-1/build_local/CMakeFiles/install/strip.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/cui.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/edit_cache.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/rebuild_cache.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/list_install_components.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/install.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/install/local.dir
+D:/Code Dump/FX-Framwork-1/build_local/third_party/CUI/CMakeFiles/install/strip.dir

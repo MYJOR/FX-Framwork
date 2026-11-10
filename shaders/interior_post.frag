@@ -17,6 +17,8 @@ uniform vec4 uFilm;     // grain that is always there, its size in pixels, green
 uniform vec2 uNight;    // largest gain the adaptation can reach; noise seed
 uniform vec2 uDofEdge;  // blur amount reached in the corners of the screen; blur over the whole picture
 uniform vec4 uDof;     // near, far, 1 / focus start, 1 / (1 / full blur - 1 / focus start); w = 0: off
+uniform vec4 uDofHand; // lens on the held thing 0..1 (it is marked by alpha 0 in uScene); its blur when the lens is on the room; the room's blur when it is not
+uniform vec2 uDofFar;  // 1 / the held thing's distance, 1 / (that - 1 / distance where the room is fully soft)
 
 // Khronos PBR Neutral: keeps base colours as authored up to ~0.8, then rolls highlights off to white.
 vec3 tonemap(vec3 c) {
@@ -41,18 +43,30 @@ void main() {
     float gain = uRaw != 0 ? 1.0 : texelFetch(uExposureTex, ivec2(0), 0).r;
     float exposure = uGrade.x * gain;
     vec3 c = vec3(0.0);
-    float coc = 0.0; // near-field blur amount, 0..1; the nearest sample decides so outlines stay whole
+    // Blur amount, 0..1. In front of the focus: the nearest sample decides, so outlines stay whole.
+    // Behind it (only while the lens is on the held thing): the average, so the sharp thing in front
+    // keeps its antialiased outline against the soft room.
+    float coc = 0.0, cocFar = 0.0;
     for (int s = 0; s < uSamples; s++) {
+        vec4 texel = texelFetch(uScene, ip, s);
         if (uDof.w > 0.0) {
-            float z = linearDepth(texelFetch(uSceneDepth, ip, s).r, uDof.x, uDof.y);
-            coc = max(coc, clamp((1.0 / z - uDof.z) * uDof.w, 0.0, 1.0));
+            if (texel.a < 0.5) coc = max(coc, uDofHand.y * (1.0 - uDofHand.x)); // the held thing
+            else {
+                float iz = 1.0 / linearDepth(texelFetch(uSceneDepth, ip, s).r, uDof.x, uDof.y);
+                coc = max(coc, clamp((iz - uDof.z) * uDof.w, 0.0, 1.0) * (1.0 - uDofHand.x));
+                cocFar += uDofHand.x * uDofHand.z * clamp((uDofFar.x - iz) * uDofFar.y, 0.0, 1.0);
+            }
         }
-        vec3 hdr = max(texelFetch(uScene, ip, s).rgb, 0.0);
+        vec3 hdr = max(texel.rgb, 0.0);
         c += uRaw != 0 ? clamp(hdr, 0.0, 1.0) : tonemap(hdr * exposure);
     }
     c /= float(uSamples);
-    // the lens also goes soft away from the middle: nothing inside 0.7 of the way out, most in the corners
-    if (uDof.w > 0.0) coc = max(max(coc, uDofEdge.y), uDofEdge.x * smoothstep(0.70, 1.40, length(vNdc)));
+    cocFar /= float(uSamples);
+    if (uDof.w > 0.0) {
+        // the lens also goes soft away from the middle: nothing inside 0.7 of the way out, most in the corners
+        float soft = max(uDofEdge.y, uDofEdge.x * smoothstep(0.70, 1.40, length(vNdc)));
+        coc = (coc > 0.004 || cocFar <= soft) ? max(coc, soft) : -cocFar; // negative: behind the focus
+    }
 
     if (uRaw == 0) {
         c = mix(vec3(luma(c)), c, uGrade.y);
@@ -85,5 +99,6 @@ void main() {
 
     // one LSB of ordered noise: flat walls under smooth light would band at 8 bits otherwise
     float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    outColor = vec4(c + (n - 0.5) / 255.0, uDof.w > 0.0 ? coc : 1.0);
+    // alpha: the signed blur amount, with zero on an exact 8 bit step
+    outColor = vec4(c + (n - 0.5) / 255.0, uDof.w > 0.0 ? (128.0 + 127.0 * coc) / 255.0 : 1.0);
 }

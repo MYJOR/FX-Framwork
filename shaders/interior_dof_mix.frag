@@ -32,7 +32,8 @@ void main() {
     vec2 p = vNdc * (1.0 + k * dot(q, q)) / (1.0 + k * (uLens.y * uLens.y + 1.0));
     vec2 uv = p * 0.5 + 0.5;
 
-    vec3 c = texture(uSharp, uv).rgb;
+    vec4 sharp = texture(uSharp, uv);
+    vec3 c = sharp.rgb;
     if (uFx.x > 0.0) { // red and blue focus at slightly different sizes, more so away from the middle
         vec2 off = (uv - 0.5) * uFx.x * dot(vNdc, vNdc);
         c.r = texture(uSharp, uv - off).r;
@@ -41,8 +42,11 @@ void main() {
     float cover = 0.0;
     if (uUseNear != 0) {
         vec4 near = texture(uNear, uv);
-        c = mix(c, near.rgb, near.a);
-        cover = near.a;
+        // behind the focus: this pixel's own blur amount decides, at full resolution, so the outline of
+        // the sharp thing in front stays as crisp as it was drawn
+        float behind = smoothstep(0.02, 0.30, -(sharp.a * 255.0 - 128.0) / 127.0);
+        cover = max(near.a, behind);
+        c = mix(c, near.rgb, cover);
     }
     if (uFx.y > 0.0) { // dirt catches whatever bright thing is anywhere near it
         vec3 g = texture(uGlowTex, uv).rgb;

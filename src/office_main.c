@@ -10,17 +10,25 @@
 #include "interior.h"
 #include "office_scene.h"
 #include "office_editor.h"
+#include "tracker.h"
 
 /* Office: first-person interior scene on the same platform / GL / shader layer as the desert.
  *
  *   WASD move      mouse look       Shift run      Ctrl crouch
+ *   Space (hold)   motion tracker: the lens focuses on it and the room goes soft. While it is up the
+ *                  right mouse button looks past it at the room instead of zooming (src/tracker.c)
  *   G / R  in the editor: move gizmo / rotate gizmo on the selected object
  *   Y    scene editor: frees the cursor and opens the panel (src/office_editor.c). Objects are
  *        moved in the view and the lighting is rebaked as they move. Hold the right mouse button
  *        to look around while editing.
  *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L room lights   H horror look   F5 vsync
  *   - / = exposure                  Esc quit (in the editor: deselect, then back to playing)
- *   gamepad: left stick move, right stick look, RT run, B crouch
+ *
+ *   Xbox controller (XInput, picked up when plugged in, works alongside mouse and keyboard):
+ *     left stick move      right stick look     RT or left stick click run     B crouch (toggle)
+ *     LT zoom              Y torch              X room lights                  D-pad up horror look
+ *     D-pad left / right exposure               Start scene editor <-> play
+ *     LB (hold) motion tracker; LT then looks past it at the room
  */
 
 #define PLAY_FPS 30.0f /* play mode is locked to this */
@@ -41,7 +49,10 @@
 #define FOCUS_RATE 4.0f  /* 1/s: how quickly the lens finds focus again after the zoom changed */
 #define FOCUS_BLUR 2.4f  /* how far out of focus it gets on the way */
 #define MOUSE_SENS 0.0021f /* radians per mouse count */
+#define PAD_YAW_RATE 2.8f   /* radians per second with the right stick fully over */
+#define PAD_PITCH_RATE 1.9f
 #define LIVE_BAKE_BUDGET_MS 6.0 /* per frame, for the bounce light while the scene is edited */
+#define TRACKER_DEMO_SIGNAL 1 /* 1: something unseen walks the hallway and the big room, for the tracker to pick up. 0: nothing does. */
 
 typedef struct {
     V3 pos;        /* feet */
@@ -124,6 +135,34 @@ static float tube_level(float t) {
     return v;
 }
 
+/* Something for the motion tracker to find: nothing in the office moves by itself, and the tracker
+   only shows what moves. This is a contact with no body, there on the tracker's screen and nowhere
+   else. It walks a loop through the hallway and the big room, stopping at each corner for a while,
+   and while it stands still the tracker loses it. Stands in for whatever the game puts in the level. */
+typedef struct { int leg; float along, wait, speed; TrackerContact contact; } Signal;
+
+static void signal_step(Signal *s, float dt) {
+    static const float path[][2] = {{4.2f, 4.6f},   {4.2f, -3.0f}, {6.4f, -3.0f}, {9.5f, -6.2f}, {12.8f, -4.0f}, /* hallway, doorway, big room */
+                                    {12.0f, 1.4f},  {7.6f, 0.8f},  {6.4f, -3.0f}, {4.2f, -3.0f}, {4.2f, -4.6f}};
+    const int n = (int)(sizeof path / sizeof path[0]);
+    const float walk = 1.3f; /* metres per second */
+    const float *a = path[s->leg % n], *b = path[(s->leg + 1) % n];
+    float dx = b[0] - a[0], dz = b[1] - a[1], len = sqrtf(dx * dx + dz * dz);
+    int moving = s->wait <= 0.0f;
+    if (!moving) s->wait -= dt;
+    s->speed += ((moving ? walk : 0.0f) - s->speed) * (1.0f - expf(-dt * 4.0f));
+    s->along += s->speed * dt;
+    if (s->along >= len) { /* at the corner: stand there for one to four seconds */
+        s->along = 0.0f; s->speed = 0.0f;
+        s->leg = (s->leg + 1) % n;
+        s->wait = 1.0f + 3.0f * (float)((s->leg * 7 + 3) % 5) / 4.0f;
+        a = b; dx = dz = 0.0f; len = 1.0f;
+    }
+    s->contact.x = a[0] + dx * s->along / len;
+    s->contact.z = a[1] + dz * s->along / len;
+    s->contact.motion = clampf(s->speed / walk, 0.0f, 1.0f);
+}
+
 static void save_screenshot(const char *path, int w, int h) {
     unsigned char *px = (unsigned char *)malloc((size_t)w * h * 3);
     unsigned char *flipped = (unsigned char *)malloc((size_t)w * h * 3);
@@ -166,6 +205,9 @@ int main(int argc, char **argv) {
     int flash_on = 0, lights_on = 1; /* F: hand torch, L: the room's lights */
     float flash_level = 0.0f, light_level = 1.0f, light_timer = 10.0f, sway_t = 0.0f, sway_step = 0.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
     int arg_zoom = 0, default_scene = 0;
+    int arg_tracker = 0, arg_tracker_focus = 0; /* test: the tracker held up; ... and the player looking past it */
+    float prev_yaw = 0.0f, prev_pitch = 0.0f;
+    Signal sig = {0};
     const char *cmds[16]; int cmd_count = 0; /* editor commands to run, one every other frame */
     float focus = 0.0f; /* the zoom the lens is focused for; trails behind zoom */
     float zoom = 0.0f, base_tan = 0.0f; /* 0..1 eased zoom; tan(half fov) when not zoomed */
@@ -216,6 +258,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--flash")) flash_on = 1;
         else if (!strcmp(argv[i], "--lights-off")) { lights_on = 0; light_level = 0.0f; }
         else if (!strcmp(argv[i], "--zoom")) arg_zoom = 1; /* test: as if the right mouse button were held */
+        else if (!strcmp(argv[i], "--tracker")) arg_tracker = 1; /* test: as if Space were held */
+        else if (!strcmp(argv[i], "--tracker-focus")) arg_tracker = arg_tracker_focus = 1; /* ... and the right mouse button too */
         else if (!strcmp(argv[i], "--bench")) bench = 1; /* uncapped, prints frame times, exits */
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
     }
@@ -247,6 +291,10 @@ int main(int argc, char **argv) {
     static IntRenderer renderer;
     static Office office;
     if (!interior_init(&renderer)) { fprintf(stderr, "shader load failed\n"); return 1; }
+    static Tracker tracker;
+    if (!tracker_init(&tracker)) { fprintf(stderr, "tracker shader load failed\n"); return 1; }
+    renderer.held_draw = tracker_draw;
+    renderer.held_user = &tracker;
     double t_load = platform_time();
     if (!office_build(&office, asset_dir)) return 1;
     /* the scene as it was last saved from the editor, if there is one */
@@ -298,6 +346,7 @@ int main(int argc, char **argv) {
     }
 
     int key_was[256] = {0};
+    int pad_crouch = 0; /* B on the controller toggles crouching: the thumb has to get back to the stick */
     double last = platform_time(), reload_timer = 0, title_timer = 0, bench_t0 = 0;
     double frame_acc = 0; int frame_n = 0, frame = 0;
     double pace_sum = 0, pace_min = 1e9, pace_max = 0, pace_dev = 0; int pace_n = 0, pace_bad = 0;
@@ -369,7 +418,7 @@ int main(int argc, char **argv) {
             else { ed.active = 0; platform_capture_mouse(1); }
         }
         int ctrl = plat.keys[VK_CONTROL] != 0; /* Ctrl + key is an editor shortcut (Ctrl Y = redo) */
-        if (((PRESSED('Y') && !typing && !ctrl) || ed.play) && !shot && !bench) { /* play <-> edit, in place */
+        if (((PRESSED('Y') && !typing && !ctrl) || ed.play || (pad.pressed & GP_START)) && !shot && !bench) { /* play <-> edit, in place */
             ed.active = !ed.active;
             platform_capture_mouse(!ed.active);
         }
@@ -390,6 +439,16 @@ int main(int argc, char **argv) {
             if (plat.keys[VK_OEM_MINUS]) look.exposure *= expf(-0.8f * dt);
             if (plat.keys[VK_OEM_PLUS]) look.exposure *= expf(0.8f * dt);
         }
+        /* controller buttons; the play-only ones stay out of the editor like their keys do */
+        if (!ed.active) {
+            if (pad.pressed & GP_Y) flash_on = !flash_on;
+            if (pad.pressed & GP_DUP) horror = !horror;
+            if (pad.pressed & GP_B) pad_crouch = !pad_crouch;
+        }
+        if (pad.pressed & GP_X) { lights_on = !lights_on; light_timer = 0.0f; }
+        if (pad.buttons & GP_DLEFT) look.exposure *= expf(-0.8f * dt);
+        if (pad.buttons & GP_DRIGHT) look.exposure *= expf(0.8f * dt);
+        if (!pad.connected || ed.active) pad_crouch = 0; /* never left crouched with no button to stand up */
         ed.play = 0;
         if (ed.focus >= 0 && ed.focus < office.object_count) { /* the editor asked for the camera to frame an object */
             const OfficeObject *obj = &office.objects[ed.focus];
@@ -458,7 +517,11 @@ int main(int argc, char **argv) {
 
         /* zoom: hold the right mouse button while playing (in the editor that button looks around) */
         if (base_tan == 0.0f) base_tan = tanf(look.fov * 0.5f);
-        int zooming = arg_zoom || (!ed.active && plat.rmb && platform_mouse_captured());
+        /* the motion tracker: held up for as long as Space or LB is. With it up, the zoom button looks
+           past it at the room instead: the lens leaves the tracker, and the view does not zoom. */
+        int look_past = !ed.active && ((plat.rmb && platform_mouse_captured()) || pad.lt > 0.5f);
+        int tracker_up = !ed.active && (arg_tracker || (!typing && (plat.keys[VK_SPACE] || (pad.buttons & GP_LB))));
+        int zooming = arg_zoom || (look_past && !tracker_up);
         zoom += ((zooming ? 1.0f : 0.0f) - zoom) * (1.0f - expf(-ZOOM_RATE * dt));
         if (zoom < 0.001f && !zooming) zoom = 0.0f;
         float zoom_tan = base_tan / (1.0f + (ZOOM_FACTOR - 1.0f) * zoom);
@@ -474,9 +537,16 @@ int main(int argc, char **argv) {
             player.yaw += (float)plat.mouse_dx * sens;
             player.pitch -= (float)plat.mouse_dy * sens;
         }
-        player.yaw += pad.rx * 2.4f * dt;
-        player.pitch += pad.ry * 1.7f * dt;
+        {   /* Right stick: the turn rate grows with the square of the deflection, so small corrections stay
+               fine and a full push still turns quickly; it slows with the zoom the same way the mouse does. */
+            float m = sqrtf(pad.rx * pad.rx + pad.ry * pad.ry), k = m * zoom_tan / base_tan;
+            player.yaw += pad.rx * k * PAD_YAW_RATE * dt;
+            player.pitch += pad.ry * k * PAD_PITCH_RATE * dt;
+        }
         player.pitch = clampf(player.pitch, -1.45f, 1.45f);
+        if (frame == 0) { prev_yaw = player.yaw; prev_pitch = player.pitch; }
+        float yaw_rate = dt > 0.0f ? (player.yaw - prev_yaw) / dt : 0.0f, pitch_rate = dt > 0.0f ? (player.pitch - prev_pitch) / dt : 0.0f;
+        prev_yaw = player.yaw; prev_pitch = player.pitch;
 
         /* move: relative to where the player faces, on the floor plane */
         V3 f = cam_forward(player.yaw, 0.0f);
@@ -490,14 +560,32 @@ int main(int argc, char **argv) {
         }
         mx += f.x * pad.ly + right.x * pad.lx;
         mz += f.z * pad.ly + right.z * pad.lx;
-        int run = plat.keys[VK_SHIFT] || pad.rt > 0.5f;
-        int crouch = (plat.keys[VK_CONTROL] && !ed.active) || (pad.buttons & GP_B); /* Ctrl is for shortcuts in the editor */
+        int run = plat.keys[VK_SHIFT] || pad.rt > 0.5f || (pad.buttons & GP_LSTICK);
+        if (run) pad_crouch = 0; /* running stands the player up */
+        int crouch = (plat.keys[VK_CONTROL] && !ed.active) || pad_crouch; /* Ctrl is for shortcuts in the editor */
         if (!(shot && arg_eye > 0.0f)) player_step(&player, &office, dt, mx, mz, run, crouch);
 
         reload_timer += dt;
         if (reload_timer > 0.5) {
             reload_timer = 0;
             if (interior_reload_shaders(&renderer)) interior_bake(&renderer, &office.scene, &look);
+            tracker_reload_shaders(&tracker);
+        }
+
+        {   /* the tracker: what it picks up, how it is held, and where that puts the lens */
+            TrackerInput in = {0};
+            in.raised = tracker_up;
+            in.focus_room = arg_tracker_focus || (look_past && tracker_up);
+            in.yaw_rate = yaw_rate; in.pitch_rate = pitch_rate;
+            in.bob_phase = player.bob_phase; in.bob_amount = player.bob_amount;
+            in.origin = player.pos; in.yaw = player.yaw;
+            if (TRACKER_DEMO_SIGNAL) {
+                if (shot) { sig.contact.x = 4.2f; sig.contact.z = -1.0f; sig.contact.motion = 1.0f; } /* a still picture: caught mid-stride in the hallway */
+                else signal_step(&sig, dt);
+                in.contacts = &sig.contact; in.contact_count = 1;
+            }
+            tracker_update(&tracker, &in, (shot || bench) ? 0.0f : dt);
+            tracker_apply_look(&tracker, &look);
         }
 
         /* camera tilt: rocks with each step and leans into a strafe; play mode only */
