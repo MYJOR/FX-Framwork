@@ -54,6 +54,34 @@ void *platform_gl_proc(const char *name) {
     return f;
 }
 
+static int g_captured; /* relative-mouse mode, see platform_capture_mouse */
+
+static void clip_cursor_to_client(void) {
+    RECT r;
+    GetClientRect(g_hwnd, &r);
+    POINT a = {r.left, r.top}, b = {r.right, r.bottom};
+    ClientToScreen(g_hwnd, &a);
+    ClientToScreen(g_hwnd, &b);
+    RECT c = {a.x, a.y, b.x, b.y};
+    ClipCursor(&c);
+}
+
+void platform_capture_mouse(int on) {
+    static int raw_registered;
+    on = on != 0;
+    if (!g_hwnd || on == g_captured) return;
+    if (on && !raw_registered) {
+        RAWINPUTDEVICE rid = {0x01, 0x02, 0, g_hwnd}; /* generic desktop / mouse */
+        raw_registered = RegisterRawInputDevices(&rid, 1, sizeof rid) != 0;
+        if (!raw_registered) { fprintf(stderr, "raw mouse input unavailable\n"); return; }
+    }
+    g_captured = on;
+    if (on) { clip_cursor_to_client(); ShowCursor(FALSE); }
+    else { ClipCursor(NULL); ShowCursor(TRUE); }
+}
+
+int platform_mouse_captured(void) { return g_captured; }
+
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     Platform *p = g_p;
     switch (msg) {
@@ -61,7 +89,22 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY: PostQuitMessage(0); return 0;
     case WM_SIZE:
         if (p) { p->width = LOWORD(lp); p->height = HIWORD(lp); }
+        if (g_captured) clip_cursor_to_client();
         return 0;
+    case WM_MOVE:
+        if (g_captured) clip_cursor_to_client();
+        break;
+    case WM_INPUT:
+        if (g_captured && p) {
+            RAWINPUT ri;
+            UINT sz = sizeof ri;
+            if (GetRawInputData((HRAWINPUT)lp, RID_INPUT, &ri, &sz, sizeof(RAWINPUTHEADER)) != (UINT)-1 &&
+                ri.header.dwType == RIM_TYPEMOUSE && !(ri.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+                p->mouse_dx += ri.data.mouse.lLastX;
+                p->mouse_dy += ri.data.mouse.lLastY;
+            }
+        }
+        break; /* DefWindowProc releases the raw input buffer */
     case WM_KEYDOWN: case WM_SYSKEYDOWN:
     case WM_KEYUP: case WM_SYSKEYUP: {
         int down = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
@@ -90,6 +133,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_KILLFOCUS: {
+        platform_capture_mouse(0);
         if (p) memset(p->keys, 0, sizeof p->keys);
         PlatEvent e = {PE_FOCUS}; e.a = 0; emit(&e);
         return 0;
@@ -132,7 +176,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             TrackMouseEvent(&t);
             g_tracking = 1;
         }
-        if (p && p->rmb) { p->mouse_dx += x - g_lastx; p->mouse_dy += y - g_lasty; }
+        if (p && p->rmb && !g_captured) { p->mouse_dx += x - g_lastx; p->mouse_dy += y - g_lasty; }
         g_lastx = x; g_lasty = y;
         PlatEvent e = {PE_MOUSE_MOVE};
         e.x = (float)x; e.y = (float)y;
@@ -142,6 +186,9 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     }
     return DefWindowProcA(h, msg, wp, lp);
 }
+
+static int g_headless;
+void platform_set_headless(int on) { g_headless = on; }
 
 int platform_init(Platform *p, const char *title, int w, int h) {
     g_p = p;
@@ -158,7 +205,7 @@ int platform_init(Platform *p, const char *title, int w, int h) {
 
     RECT r = {0, 0, w, h};
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
-    g_hwnd = CreateWindowA(wc.lpszClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+    g_hwnd = CreateWindowA(wc.lpszClassName, title, WS_OVERLAPPEDWINDOW | (g_headless ? 0 : WS_VISIBLE),
                            CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top,
                            NULL, NULL, wc.hInstance, NULL);
     if (!g_hwnd) return 0;

@@ -15,5 +15,8 @@ typedef struct {
 int shader_program_load(Program *p, const char *vs_file, const char *fs_file);
 void shader_reload_if_changed(Program *p);
 void shader_set_dir(const char *dir);
+/* The file prepended to every shader. Defaults to common.glsl; a scene with its own look
+   (the interior) points this at its own prelude before loading programs. */
+void shader_set_common(const char *file);
 
 #endif

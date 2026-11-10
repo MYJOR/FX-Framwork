@@ -5,8 +5,10 @@
 #include <sys/stat.h>
 
 static char g_dir[260] = "shaders";
+static char g_common[64] = "common.glsl";
 
 void shader_set_dir(const char *dir) { snprintf(g_dir, sizeof g_dir, "%s", dir); }
+void shader_set_common(const char *file) { snprintf(g_common, sizeof g_common, "%s", file); }
 
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -46,7 +48,7 @@ static GLuint compile(GLenum type, const char *common, const char *src, const ch
 
 static GLuint build(const Program *p, time_t *out_stamp) {
     char common_path[300];
-    snprintf(common_path, sizeof common_path, "%s/common.glsl", g_dir);
+    snprintf(common_path, sizeof common_path, "%s/%s", g_dir, g_common);
     char *common = read_file(common_path);
     char *vs = read_file(p->vs_path);
     char *fs = read_file(p->fs_path);
@@ -89,7 +91,7 @@ int shader_program_load(Program *p, const char *vs_file, const char *fs_file) {
 
 void shader_reload_if_changed(Program *p) {
     char common_path[300];
-    snprintf(common_path, sizeof common_path, "%s/common.glsl", g_dir);
+    snprintf(common_path, sizeof common_path, "%s/%s", g_dir, g_common);
     time_t a = mtime_of(common_path), b = mtime_of(p->vs_path), c = mtime_of(p->fs_path);
     time_t latest = a > b ? (a > c ? a : c) : (b > c ? b : c);
     if (latest == p->stamp) return;

@@ -23,6 +23,9 @@ typedef struct {
 } PlatEvent;
 typedef void (*PlatEventFn)(void *user, const PlatEvent *e);
 
+/* Call before platform_init to keep the window hidden (automated runs). The window's own framebuffer
+   is then not a reliable render target: draw into a framebuffer object. */
+void platform_set_headless(int on);
 int platform_init(Platform *p, const char *title, int w, int h);
 void platform_poll(Platform *p);
 void platform_swap(Platform *p);
@@ -30,6 +33,10 @@ double platform_time(void);
 void platform_set_event_hook(PlatEventFn fn, void *user);
 void platform_set_vsync(int on);
 void platform_set_title(const char *title);
+/* Relative mouse for first-person look: hides the cursor, confines it to the window and feeds
+   mouse_dx/mouse_dy from raw input without a button held. Released automatically on focus loss. */
+void platform_capture_mouse(int on);
+int platform_mouse_captured(void);
 /* Lock the frame rate: picks a vsync interval for the display and paces frames evenly. */
 void platform_set_target_fps(int fps);
 void platform_frame_limit(double fps);

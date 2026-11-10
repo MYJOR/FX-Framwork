@@ -1,4 +1,5 @@
 #include "png.h"
+#include "inflate.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,4 +81,91 @@ int png_write_rgb(const char *path, int w, int h, const unsigned char *rgb) {
     fclose(f);
     free(raw); free(z);
     return 1;
+}
+
+/* ---- reader ------------------------------------------------------------------------------------ */
+
+static unsigned get32(const unsigned char *p) {
+    return ((unsigned)p[0] << 24) | ((unsigned)p[1] << 16) | ((unsigned)p[2] << 8) | p[3];
+}
+
+static int paeth(int a, int b, int c) {
+    int p = a + b - c, pa = abs(p - a), pb = abs(p - b), pc = abs(p - c);
+    return (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+}
+
+unsigned char *png_load(const char *path, int *w_out, int *h_out, int *channels_out) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    unsigned char *file = size > 0 ? (unsigned char *)malloc((size_t)size) : NULL;
+    if (!file || fread(file, 1, (size_t)size, f) != (size_t)size) { fclose(f); free(file); return NULL; }
+    fclose(f);
+
+    static const unsigned char sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    unsigned char *idat = NULL, *raw = NULL, *out = NULL;
+    size_t idat_len = 0, n = (size_t)size;
+    int w = 0, h = 0, ch = 0, ok = 0;
+    if (n < 8 || memcmp(file, sig, 8)) goto done;
+    idat = (unsigned char *)malloc(n); /* all IDAT payloads together are smaller than the file */
+    if (!idat) goto done;
+
+    for (size_t pos = 8; pos + 12 <= n;) {
+        size_t len = get32(file + pos);
+        const unsigned char *type = file + pos + 4, *data = file + pos + 8;
+        if (len > n - pos - 12) goto done;
+        if (!memcmp(type, "IHDR", 4) && len >= 13) {
+            w = (int)get32(data); h = (int)get32(data + 4);
+            int depth = data[8], ctype = data[9], interlace = data[12];
+            ch = ctype == 0 ? 1 : ctype == 4 ? 2 : ctype == 2 ? 3 : ctype == 6 ? 4 : 0;
+            if (depth != 8 || !ch || interlace || w <= 0 || h <= 0 || w > 16384 || h > 16384) {
+                fprintf(stderr, "[png] %s: only 8-bit non-interlaced grey/RGB(A) is supported\n", path);
+                goto done;
+            }
+        } else if (!memcmp(type, "IDAT", 4)) {
+            memcpy(idat + idat_len, data, len);
+            idat_len += len;
+        } else if (!memcmp(type, "IEND", 4)) {
+            break;
+        }
+        pos += len + 12;
+    }
+    if (!ch || !idat_len) goto done;
+
+    size_t stride = (size_t)w * ch;
+    raw = (unsigned char *)malloc((stride + 1) * (size_t)h);
+    out = (unsigned char *)malloc(stride * (size_t)h);
+    if (!raw || !out) goto done;
+    if (zlib_inflate(idat, idat_len, raw, (stride + 1) * (size_t)h) != (long)((stride + 1) * (size_t)h)) {
+        fprintf(stderr, "[png] %s: corrupt image data\n", path);
+        goto done;
+    }
+    for (int y = 0; y < h; y++) {
+        const unsigned char *src = raw + (size_t)y * (stride + 1);
+        unsigned char *dst = out + (size_t)y * stride;
+        const unsigned char *up = y ? dst - stride : NULL;
+        int filter = *src++;
+        for (size_t x = 0; x < stride; x++) {
+            int a = x >= (size_t)ch ? dst[x - ch] : 0;
+            int b = up ? up[x] : 0;
+            int c = (up && x >= (size_t)ch) ? up[x - ch] : 0;
+            int v = src[x];
+            switch (filter) {
+            case 1: v += a; break;
+            case 2: v += b; break;
+            case 3: v += (a + b) >> 1; break;
+            case 4: v += paeth(a, b, c); break;
+            default: break;
+            }
+            dst[x] = (unsigned char)v;
+        }
+    }
+    ok = 1;
+done:
+    free(file); free(idat); free(raw);
+    if (!ok) { free(out); return NULL; }
+    *w_out = w; *h_out = h; *channels_out = ch;
+    return out;
 }

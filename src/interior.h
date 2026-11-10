@@ -1,0 +1,148 @@
+#ifndef INTERIOR_H
+#define INTERIOR_H
+#include "gl.h"
+#include "mathx.h"
+#include "shader.h"
+
+/* Interior renderer: a lighting model for enclosed, artificially lit rooms.
+ *
+ *   direct    rectangular area lights (analytic form factor) with contact-hardening soft shadows
+ *   indirect  a grid of irradiance probes (L1 spherical harmonics) baked on the GPU at load time,
+ *             several bounces, so walls and ceiling pick up colour from the floor
+ *   specular  one reflection probe, box-projected onto the room, plus box proxies for furniture
+ *   contact   screen-space ambient obscurance, blurred until noise-free
+ *   image     HDR, MSAA resolved after tonemapping, neutral tonemapper, dithered output
+ *
+ * Shadows, probes and the reflection probe are baked: once in interior_bake(), and again
+ * incrementally by interior_bake_step() while the scene is edited. A frame is a depth/normal
+ * prepass, AO, one forward pass and the resolve. */
+
+#define INT_MAX_LIGHTS 4
+#define INT_MAX_MATERIALS 16
+#define INT_MAX_DRAWS 32
+#define INT_MAX_PROXIES 8
+
+enum {
+    MAT_TWO_SIDED = 1,    /* no backface culling, normal flipped on back faces */
+    MAT_CASTS_SHADOW = 2, /* rendered into the shadow maps (furniture; the room shell only receives) */
+    MAT_SHELL = 4         /* part of the room box: the only geometry the reflection probe captures */
+};
+
+typedef struct {
+    GLuint albedo, normal, orm; /* textures, 0 = none. orm: R = roughness, G = metallic */
+    float tint[3];
+    float desaturate;           /* 0..1, applied to the albedo texture before the tint */
+    float roughness, metallic;  /* multiply the orm texture when there is one */
+    float specular;             /* reflectance at normal incidence for non-metals: 0.04 plain, higher = lacquered */
+    float rough_variation;      /* roughness follows the albedo brightness by this much (wood grain) */
+    float normal_strength;
+    float emissive[3];          /* radiance; non-zero makes the surface a pure emitter (light diffusers) */
+    unsigned flags;
+} IntMaterial;
+
+typedef struct { int first, count, material; } IntDraw;
+
+/* One-sided rectangular emitter. */
+typedef struct {
+    V3 pos;            /* centre */
+    V3 half_u, half_v; /* half extents */
+    V3 normal;         /* emitting side */
+    V3 radiance;
+} IntLight;
+
+/* Solid box that stands in for furniture in reflections. */
+typedef struct { V3 min, max; } IntProxy;
+
+typedef struct {
+    GLuint vao, vbo;
+    int vertex_count;
+    IntMaterial mats[INT_MAX_MATERIALS]; int mat_count;
+    IntDraw draws[INT_MAX_DRAWS];        int draw_count;
+    IntLight lights[INT_MAX_LIGHTS];     int light_count;
+    IntProxy proxies[INT_MAX_PROXIES];   int proxy_count;
+    V3 proxy_albedo;
+    V3 room_min, room_max; /* inner faces of the room box */
+    V3 env_pos;            /* where the reflection probe is captured */
+} IntScene;
+
+/* The look. Everything a lighting artist would tune lives here. */
+typedef struct {
+    float fov;             /* vertical, radians */
+    float exposure;
+    float shadow_softness; /* radius in metres of the light as the penumbra sees it; smaller = crisper */
+    float bounce_saturation; /* colour kept in bounced light: 1 = physical; lower stops a strongly
+                                coloured floor from dyeing the walls and ceiling. Needs a rebake. */
+    float ao_radius;       /* metres */
+    float ao_strength;     /* 0 = off */
+    float ao_direct;       /* how much of the AO also darkens direct light (0 = physically strict) */
+    float reflection;      /* scale on all specular */
+    float saturation, contrast, vignette;
+    int msaa;              /* 2, 4 or 8 */
+} IntLook;
+
+enum {
+    INT_VIEW_FINAL, INT_VIEW_ALBEDO, INT_VIEW_NORMAL, INT_VIEW_LIGHTING, INT_VIEW_DIRECT,
+    INT_VIEW_INDIRECT, INT_VIEW_AO, INT_VIEW_SHADOW, INT_VIEW_ROUGHNESS, INT_VIEW_SPECULAR, INT_VIEW_COUNT
+};
+const char *interior_view_name(int view);
+
+typedef struct {
+    Program fwd, depth, gbuf, ao, blur, post, prefilter;
+    GLuint fwd_cached; GLint loc[40];
+    GLuint fs_vao, white_tex, flat_normal_tex;
+
+    /* baked once */
+    GLuint shadow_fbo, shadow_tex, blocker_tex;
+    int shadow_lights;                 /* lights the shadow atlas is sized for */
+    GLuint blocker_depth;              /* the shadow views again, at blocker map resolution */
+    float *shadow_depth, *blocker_px;  /* scratch for building the blocker map */
+    M4 shadow_mat[INT_MAX_LIGHTS];
+    float shadow_rect[INT_MAX_LIGHTS][4];
+    GLuint sh_tex[3];
+    int probe_n[3];
+    V3 probe_origin, probe_extent;
+    GLuint capture_fbo, capture_tex, capture_depth;
+    GLuint env_fbo, env_raw, env_tex, env_depth; /* raw capture; env_tex = convolved per roughness */
+    float bake_softness;
+    double bake_ms;
+
+    /* live rebake */
+    float *sh_cpu[3];        /* the probes' SH, as uploaded to sh_tex */
+    float (*probe_dir)[4];   /* per capture texel: direction and solid angle */
+    float *probe_pixels;
+    int *probe_ids;
+    int probe_stride, probe_cursor;
+    int probes_pending;      /* probe captures left before the indirect light has settled */
+    unsigned dirty;          /* INT_DIRTY_* */
+    double step_ms;          /* cost of the last interior_bake_step */
+
+    GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
+
+    /* sized to the window */
+    int w, h, samples;
+    GLuint scene_fbo, scene_color, scene_depth;
+    GLuint pre_fbo, pre_normal, pre_depth;
+    GLuint ao_fbo[2], ao_tex[2];
+} IntRenderer;
+
+IntLook interior_default_look(void);
+int interior_init(IntRenderer *r);
+/* Renders shadow maps, irradiance probes and the reflection probe from scratch (about a second). */
+void interior_bake(IntRenderer *r, const IntScene *s, const IntLook *look);
+
+/* Live rebake, for scenes that are being edited. Call interior_invalidate when lights or geometry
+   moved, then interior_bake_step once per frame: shadows are redone at once, the bounce light and
+   the reflections catch up over the following frames within the time budget. */
+enum {
+    INT_DIRTY_SHADOWS = 1,  /* shadow casters or lights moved, or the softness changed */
+    INT_DIRTY_LIGHTING = 2, /* anything that changes the light in the room */
+    INT_DIRTY_ENV = 4       /* internal: reflection probe is stale */
+};
+void interior_invalidate(IntRenderer *r, unsigned what);
+int interior_bake_step(IntRenderer *r, const IntScene *s, const IntLook *look, double budget_ms); /* 1 = more to do */
+float interior_bake_progress(const IntRenderer *r); /* 0..1, 1 = settled */
+/* Hot reload; returns 1 if a shader that affects the bake changed (the caller should rebake). */
+int interior_reload_shaders(IntRenderer *r);
+void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 cam, V3 fwd, int w, int h, int view);
+
+#endif

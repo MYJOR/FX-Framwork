@@ -21,6 +21,32 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_QUERY_RESULT 0x8866
 #define GL_QUERY_RESULT_AVAILABLE 0x8867
 
+/* textures, samplers and framebuffers (interior scene) */
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE_3D 0x806F
+#define GL_TEXTURE_WRAP_R 0x8072
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_MIRRORED_REPEAT 0x8370
+#define GL_TEXTURE_MAX_LEVEL 0x813D
+#define GL_TEXTURE_CUBE_MAP 0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
+#define GL_TEXTURE_CUBE_MAP_SEAMLESS 0x884F
+#define GL_TEXTURE_2D_MULTISAMPLE 0x9100
+#define GL_TEXTURE_COMPARE_MODE 0x884C
+#define GL_TEXTURE_COMPARE_FUNC 0x884D
+#define GL_COMPARE_REF_TO_TEXTURE 0x884E
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+#define GL_R8 0x8229
+#define GL_R16F 0x822D
+#define GL_RGBA16F 0x881A
+#define GL_SRGB8_ALPHA8 0x8C43
+#define GL_DEPTH_COMPONENT24 0x81A6
+#define GL_FRAMEBUFFER 0x8D40
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+
 /* X(return type, name, args) */
 #define GL_FUNCS(X) \
     X(GLuint, CreateShader, (GLenum)) \
@@ -54,7 +80,19 @@ typedef ptrdiff_t GLsizeiptr;
     X(void, BeginQuery, (GLenum, GLuint)) \
     X(void, EndQuery, (GLenum)) \
     X(void, GetQueryObjectiv, (GLuint, GLenum, GLint *)) \
-    X(void, GetQueryObjectui64v, (GLuint, GLenum, unsigned long long *))
+    X(void, GetQueryObjectui64v, (GLuint, GLenum, unsigned long long *)) \
+    X(void, Uniform4f, (GLint, GLfloat, GLfloat, GLfloat, GLfloat)) \
+    X(void, Uniform3fv, (GLint, GLsizei, const GLfloat *)) \
+    X(void, Uniform4fv, (GLint, GLsizei, const GLfloat *)) \
+    X(void, ActiveTexture, (GLenum)) \
+    X(void, GenerateMipmap, (GLenum)) \
+    X(void, TexImage3D, (GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *)) \
+    X(void, TexImage2DMultisample, (GLenum, GLsizei, GLenum, GLsizei, GLsizei, GLboolean)) \
+    X(void, GenFramebuffers, (GLsizei, GLuint *)) \
+    X(void, DeleteFramebuffers, (GLsizei, const GLuint *)) \
+    X(void, BindFramebuffer, (GLenum, GLuint)) \
+    X(void, FramebufferTexture2D, (GLenum, GLenum, GLenum, GLuint, GLint)) \
+    X(GLenum, CheckFramebufferStatus, (GLenum))
 
 #define X(ret, name, args) typedef ret(APIENTRY *PFN_gl##name) args; extern PFN_gl##name gl##name;
 GL_FUNCS(X)
