@@ -21,6 +21,7 @@
 #define INT_MAX_MATERIALS 16
 #define INT_MAX_DRAWS 32
 #define INT_MAX_PROXIES 8
+#define INT_MAX_ENVS 2
 
 enum {
     MAT_TWO_SIDED = 1,    /* no backface culling, normal flipped on back faces */
@@ -53,6 +54,18 @@ typedef struct {
 /* Solid box that stands in for furniture in reflections. */
 typedef struct { V3 min, max; } IntProxy;
 
+/* A reflection probe: captured at pos, box-projected onto the room it stands in. */
+typedef struct { V3 pos, box_min, box_max; } IntEnv;
+
+/* The level may be two rooms side by side, parted by a wall across the X axis with one arched
+   doorway in it. Light crosses from one room to the other only through that opening. */
+typedef struct {
+    float x0, x1;   /* the wall's two faces; x1 <= x0: there is no wall, the level is one room */
+    float z;        /* centre of the doorway */
+    float half_w;   /* half its width, and the radius of the arch */
+    float spring;   /* height where the straight sides end and the arch begins */
+} IntPortal;
+
 typedef struct {
     GLuint vao, vbo;
     int vertex_count;
@@ -61,8 +74,9 @@ typedef struct {
     IntLight lights[INT_MAX_LIGHTS];     int light_count;
     IntProxy proxies[INT_MAX_PROXIES];   int proxy_count;
     V3 proxy_albedo;
-    V3 room_min, room_max; /* inner faces of the room box */
-    V3 env_pos;            /* where the reflection probe is captured */
+    V3 room_min, room_max; /* bounds of the whole level: the irradiance probes fill this box */
+    IntEnv envs[INT_MAX_ENVS]; int env_count; /* envs[0]: the room below portal.x0, envs[1]: the one beyond portal.x1 */
+    IntPortal portal;
 } IntScene;
 
 /* The look. Everything a lighting artist would tune lives here. */
@@ -116,7 +130,7 @@ typedef struct {
     int probe_n[3];
     V3 probe_origin, probe_extent;
     GLuint capture_fbo, capture_tex, capture_depth;
-    GLuint env_fbo, env_raw, env_tex, env_depth; /* raw capture; env_tex = convolved per roughness */
+    GLuint env_fbo, env_raw, env_tex[INT_MAX_ENVS], env_depth; /* raw capture; env_tex = convolved per roughness */
     float bake_softness;
     double bake_ms;
 

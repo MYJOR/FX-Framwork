@@ -60,7 +60,7 @@ void main() {
             if (any(lessThanEqual(cuv, vec2(0.0))) || any(greaterThanEqual(cuv, vec2(1.0)))) continue;
             float ck = texture(uFlashCookie, cuv).r;
             float d2 = dot(Lv, Lv);
-            sum += mix(ck, ck * ck * 2.2, uFlashShape.z) * texture(uFlashShadow, fp) / ((d2 + 1.0) * (1.0 + uFlashShape.y * d2));
+            sum += portalVis(P, uFlashPos.xyz, 0.0) * mix(ck, ck * ck * 2.2, uFlashShape.z) * texture(uFlashShadow, fp) / ((d2 + 1.0) * (1.0 + uFlashShape.y * d2));
         }
         glow += uFlashColor * (sum * dt * uFlashPos.w * uGlow.z * exposure);
     }

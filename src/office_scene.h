@@ -2,8 +2,8 @@
 #define OFFICE_SCENE_H
 #include "interior.h"
 
-/* The office: a small closed room with a suspended ceiling, lit ceiling panels, desks and the chair
-   model. Built from the files in "office assets". The room is fixed; everything in it is an object
+/* The office: a small room with a suspended ceiling, lit ceiling panels, desks and the chair model,
+   and a hallway along its +X side reached through an open arched doorway. Built from the files in "office assets". The room is fixed; everything in it is an object
    that can be added, removed, hidden, moved and saved. */
 
 #define OFFICE_MAX_COLLIDERS 16

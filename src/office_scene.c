@@ -11,6 +11,14 @@
 #define ROOM_HX 3.0f      /* half width  (x): 10 ceiling tiles */
 #define ROOM_HZ 3.6f      /* half length (z): 12 ceiling tiles */
 #define ROOM_H 2.7f
+/* The hallway runs along the office's +X wall, same length and height, finished the same way. */
+#define WALL_T 0.3f                 /* thickness of the wall between them */
+#define HALL_X0 (ROOM_HX + WALL_T)  /* hallway: x from here ... */
+#define HALL_X1 (HALL_X0 + 1.8f)    /* ... to here */
+#define DOOR_Z 1.2f                 /* centre of the doorway along the wall */
+#define DOOR_HW 0.7f                /* half its width = radius of the arch */
+#define DOOR_SPRING 1.55f           /* straight sides up to here, then the half circle: 2.25 m at the crown */
+#define ARCH_SEGS 24
 #define TILE 0.6f         /* suspended ceiling grid */
 #define FIXTURE_DROP 0.004f /* panels and vents sit just under the tiles */
 #define EMITTER_DROP 0.001f /* and a panel's diffuser just under its frame */
@@ -191,6 +199,74 @@ static IntMaterial material(GLuint albedo, float roughness, unsigned flags) {
     return m;
 }
 
+/* ---- walls with the doorway --------------------------------------------------------------------- */
+
+/* Wall vertices are textured in world units like quad_tiled: 3 m across (along z, or along x for the
+   faces inside the doorway), 2 m up. */
+static void wall_vertex(VertexBuf *b, V3 p, V3 n, int along_x) { push_vertex(b, p, n, (along_x ? p.x : p.z) / 3.0f, p.y / 2.0f); }
+static void wall_tri(VertexBuf *b, V3 a, V3 p, V3 q, V3 n, int along_x) {
+    V3 e1 = v3_add(p, v3_scale(a, -1.0f)), e2 = v3_add(q, v3_scale(a, -1.0f));
+    if (v3_dot(v3_cross(e1, e2), n) < 0.0f) { V3 t = p; p = q; q = t; } /* wound to face n */
+    wall_vertex(b, a, n, along_x); wall_vertex(b, p, n, along_x); wall_vertex(b, q, n, along_x);
+}
+static void wall_quad(VertexBuf *b, V3 p0, V3 p1, V3 p2, V3 p3, V3 n, int along_x) {
+    wall_tri(b, p0, p1, p2, n, along_x);
+    wall_tri(b, p0, p2, p3, n, along_x);
+}
+
+/* Point i of ARCH_SEGS along the arch, from its -z foot over the crown to its +z foot: z and y. */
+static void arch_point(int i, float *z, float *y) {
+    float a = PI * (1.0f - (float)i / (float)ARCH_SEGS);
+    *z = DOOR_Z + DOOR_HW * cosf(a);
+    *y = DOOR_SPRING + DOOR_HW * sinf(a);
+}
+
+/* One face of the wall between office and hallway, at x, facing nx: everything but the doorway. */
+static void arch_wall(VertexBuf *b, float x, float nx) {
+    V3 n = v3(nx, 0, 0);
+    float za = DOOR_Z - DOOR_HW, zb = DOOR_Z + DOOR_HW;
+    for (int side = 0; side < 2; side++) { /* beside the doorway, split at the spring line so the arch pieces meet vertices */
+        float z0 = side ? zb : -ROOM_HZ, z1 = side ? ROOM_HZ : za;
+        wall_quad(b, v3(x, 0, z0), v3(x, 0, z1), v3(x, DOOR_SPRING, z1), v3(x, DOOR_SPRING, z0), n, 0);
+        wall_quad(b, v3(x, DOOR_SPRING, z0), v3(x, DOOR_SPRING, z1), v3(x, ROOM_H, z1), v3(x, ROOM_H, z0), n, 0);
+    }
+    for (int i = 0; i < ARCH_SEGS; i++) { /* from the arch up to the ceiling */
+        float z0, y0, z1, y1;
+        arch_point(i, &z0, &y0); arch_point(i + 1, &z1, &y1);
+        wall_quad(b, v3(x, y0, z0), v3(x, y1, z1), v3(x, ROOM_H, z1), v3(x, ROOM_H, z0), n, 0);
+    }
+}
+
+/* The inside of the doorway: two straight sides and the curved underside of the arch. */
+static void arch_lining(VertexBuf *b, float x0, float x1) {
+    float za = DOOR_Z - DOOR_HW, zb = DOOR_Z + DOOR_HW;
+    wall_quad(b, v3(x0, 0, za), v3(x1, 0, za), v3(x1, DOOR_SPRING, za), v3(x0, DOOR_SPRING, za), v3(0, 0, 1), 1);
+    wall_quad(b, v3(x0, 0, zb), v3(x1, 0, zb), v3(x1, DOOR_SPRING, zb), v3(x0, DOOR_SPRING, zb), v3(0, 0, -1), 1);
+    for (int i = 0; i < ARCH_SEGS; i++) {
+        float z[2], y[2], v[2];
+        V3 n[2];
+        for (int k = 0; k < 2; k++) {
+            arch_point(i + k, &z[k], &y[k]);
+            n[k] = v3_norm(v3(0, DOOR_SPRING - y[k], DOOR_Z - z[k])); /* towards the arch's centre: smooth shading */
+            v[k] = (DOOR_SPRING + DOOR_HW * PI * (float)(i + k) / (float)ARCH_SEGS) / 2.0f; /* the texture carries on up from the side */
+        }
+        /* two triangles: (x0,0) (x1,0) (x1,1) and (x0,0) (x1,1) (x0,1), facing down into the opening */
+        const float xs[6] = {x0, x1, x1, x0, x1, x0};
+        const int ks[6] = {0, 0, 1, 0, 1, 1};
+        for (int t = 0; t < 6; t += 3) {
+            int order[3] = {t, t + 1, t + 2};
+            V3 p[3];
+            for (int c = 0; c < 3; c++) p[c] = v3(xs[t + c], y[ks[t + c]], z[ks[t + c]]);
+            V3 fn = v3_cross(v3_add(p[1], v3_scale(p[0], -1.0f)), v3_add(p[2], v3_scale(p[0], -1.0f)));
+            if (v3_dot(fn, n[0]) < 0.0f) { order[1] = t + 2; order[2] = t + 1; }
+            for (int c = 0; c < 3; c++) {
+                int q = order[c], k = ks[q];
+                push_vertex(b, v3(xs[q], y[k], z[k]), n[k], xs[q] / 3.0f, v[k]);
+            }
+        }
+    }
+}
+
 /* ---- movable objects ---------------------------------------------------------------------------- */
 
 static const char *TYPE_NAMES[OT_COUNT] = {"Chair", "Desk", "Light panel", "Vent"};
@@ -222,8 +298,11 @@ void office_clamp_object(const Office *o, OfficeObject *obj) {
     const float margin = 0.02f;
     V3 lo, hi;
     placed_bounds(obj, obj->bmin, obj->bmax, &lo, &hi);
-    if (lo.x < s->room_min.x + margin) obj->pos.x += s->room_min.x + margin - lo.x;
-    if (hi.x > s->room_max.x - margin) obj->pos.x -= hi.x - (s->room_max.x - margin);
+    /* an object stays in the room it is in: the office, or the hallway beyond the wall */
+    int hall = obj->pos.x > ROOM_HX + WALL_T * 0.5f;
+    float x_lo = hall ? HALL_X0 : s->room_min.x, x_hi = hall ? s->room_max.x : ROOM_HX;
+    if (lo.x < x_lo + margin) obj->pos.x += x_lo + margin - lo.x;
+    if (hi.x > x_hi - margin) obj->pos.x -= hi.x - (x_hi - margin);
     if (lo.z < s->room_min.z + margin) obj->pos.z += s->room_min.z + margin - lo.z;
     if (hi.z > s->room_max.z - margin) obj->pos.z -= hi.z - (s->room_max.z - margin);
 }
@@ -240,6 +319,9 @@ void office_update(Office *o) {
     s->proxy_count = 0;
     s->light_count = 0;
     o->collider_count = 0;
+    /* the wall between office and hallway, either side of the doorway */
+    o->colliders[o->collider_count++] = (OfficeCollider){ROOM_HX, -ROOM_HZ, HALL_X0, DOOR_Z - DOOR_HW};
+    o->colliders[o->collider_count++] = (OfficeCollider){ROOM_HX, DOOR_Z + DOOR_HW, HALL_X0, ROOM_HZ};
 
     /* hand out the light slots and size the vertex buffer */
     int total = o->room_count;
@@ -424,6 +506,7 @@ void office_reset(Office *o) {
     add_named(o, OT_LIGHT_PANEL, fixture_pos(2, 9, 4, 10), 0.0f, "Fill light");
     add_named(o, OT_VENT, fixture_pos(7, 4, 8, 5), 0.0f, "Vent 1");
     add_named(o, OT_VENT, fixture_pos(2, 2, 3, 3), 0.0f, "Vent 2");
+    add_named(o, OT_LIGHT_PANEL, fixture_pos(11, 5, 13, 6), 0.0f, "Hall light"); /* mid hallway, centred across it */
     office_update(o);
 }
 
@@ -667,12 +750,24 @@ int office_build(Office *o, const char *asset_dir) {
         box(&vb, v3(-ROOM_HX, 0, -ROOM_HZ), v3(ROOM_HX, h, -ROOM_HZ + t), su, h);
         box(&vb, v3(-ROOM_HX, 0, ROOM_HZ - t), v3(ROOM_HX, h, ROOM_HZ), su, h);
         box(&vb, v3(-ROOM_HX, 0, -ROOM_HZ + t), v3(-ROOM_HX + t, h, ROOM_HZ - t), su, h);
-        box(&vb, v3(ROOM_HX - t, 0, -ROOM_HZ + t), v3(ROOM_HX, h, ROOM_HZ - t), su, h);
+        const float za = DOOR_Z - DOOR_HW, zb = DOOR_Z + DOOR_HW;
+        box(&vb, v3(ROOM_HX - t, 0, -ROOM_HZ + t), v3(ROOM_HX, h, za), su, h); /* office side of the shared wall, around the doorway */
+        box(&vb, v3(ROOM_HX - t, 0, zb), v3(ROOM_HX, h, ROOM_HZ - t), su, h);
+        box(&vb, v3(ROOM_HX, 0, za), v3(HALL_X0, h, za + t), su, h);           /* through the doorway */
+        box(&vb, v3(ROOM_HX, 0, zb - t), v3(HALL_X0, h, zb), su, h);
+        box(&vb, v3(HALL_X0, 0, -ROOM_HZ + t), v3(HALL_X0 + t, h, za), su, h); /* hallway */
+        box(&vb, v3(HALL_X0, 0, zb), v3(HALL_X0 + t, h, ROOM_HZ - t), su, h);
+        box(&vb, v3(HALL_X1 - t, 0, -ROOM_HZ + t), v3(HALL_X1, h, ROOM_HZ - t), su, h);
+        box(&vb, v3(HALL_X0, 0, -ROOM_HZ), v3(HALL_X1, h, -ROOM_HZ + t), su, h);
+        box(&vb, v3(HALL_X0, 0, ROOM_HZ - t), v3(HALL_X1, h, ROOM_HZ), su, h);
     }
     end_room_draw(o, &vb);
 
     begin_room_draw(o, &vb, M_FLOOR); /* planks run across the room (along x) */
-    quad_tiled(&vb, v3(0, 0, 0), v3(ROOM_HX, 0, 0), v3(0, 0, -ROOM_HZ), 4.0f, 1.25f);
+    {   /* one sheet under office, doorway and hallway, so the boards run straight through */
+        float cx = (-ROOM_HX + HALL_X1) * 0.5f, hx = (ROOM_HX + HALL_X1) * 0.5f;
+        quad_tiled(&vb, v3(cx, 0, 0), v3(hx, 0, 0), v3(0, 0, -ROOM_HZ), 4.0f, 1.25f);
+    }
     end_room_draw(o, &vb);
 
     begin_room_draw(o, &vb, M_WALL);
@@ -681,19 +776,34 @@ int office_build(Office *o, const char *asset_dir) {
         quad_tiled(&vb, v3(0, hy, -ROOM_HZ), v3(ROOM_HX, 0, 0), v3(0, hy, 0), su, sv);
         quad_tiled(&vb, v3(0, hy, ROOM_HZ), v3(-ROOM_HX, 0, 0), v3(0, hy, 0), su, sv);
         quad_tiled(&vb, v3(-ROOM_HX, hy, 0), v3(0, 0, -ROOM_HZ), v3(0, hy, 0), su, sv);
-        quad_tiled(&vb, v3(ROOM_HX, hy, 0), v3(0, 0, ROOM_HZ), v3(0, hy, 0), su, sv);
+        arch_wall(&vb, ROOM_HX, -1.0f);  /* the wall shared with the hallway: its office face, ... */
+        arch_wall(&vb, HALL_X0, 1.0f);   /* ... its hallway face ... */
+        arch_lining(&vb, ROOM_HX, HALL_X0); /* ... and the doorway through it */
+        float hcx = (HALL_X0 + HALL_X1) * 0.5f, hhx = (HALL_X1 - HALL_X0) * 0.5f;
+        quad_tiled(&vb, v3(HALL_X1, hy, 0), v3(0, 0, ROOM_HZ), v3(0, hy, 0), su, sv);
+        quad_tiled(&vb, v3(hcx, hy, -ROOM_HZ), v3(hhx, 0, 0), v3(0, hy, 0), su, sv);
+        quad_tiled(&vb, v3(hcx, hy, ROOM_HZ), v3(-hhx, 0, 0), v3(0, hy, 0), su, sv);
     }
     end_room_draw(o, &vb);
 
     begin_room_draw(o, &vb, M_CEILING); /* one texture repeat = 3 tiles, so the grid lands on the fixtures */
-    quad_tiled(&vb, v3(0, ROOM_H, 0), v3(ROOM_HX, 0, 0), v3(0, 0, ROOM_HZ), 3.0f * TILE, 3.0f * TILE);
+    {   /* the grid carries on over the hallway: half tiles along both of its long walls */
+        float cx = (-ROOM_HX + HALL_X1) * 0.5f, hx = (ROOM_HX + HALL_X1) * 0.5f;
+        quad_tiled(&vb, v3(cx, ROOM_H, 0), v3(hx, 0, 0), v3(0, 0, ROOM_HZ), 3.0f * TILE, 3.0f * TILE);
+    }
     end_room_draw(o, &vb);
     o->room = vb.v;
     o->room_count = vb.n;
 
     s->room_min = v3(-ROOM_HX, 0, -ROOM_HZ);
-    s->room_max = v3(ROOM_HX, ROOM_H, ROOM_HZ);
-    s->env_pos = v3(0.0f, 1.5f, 0.6f);
+    s->room_max = v3(HALL_X1, ROOM_H, ROOM_HZ);
+    s->env_count = 2; /* a reflection probe for the office and one for the hallway */
+    s->envs[0].pos = v3(0.0f, 1.5f, 0.6f);
+    s->envs[0].box_min = v3(-ROOM_HX, 0, -ROOM_HZ); s->envs[0].box_max = v3(ROOM_HX, ROOM_H, ROOM_HZ);
+    s->envs[1].pos = v3((HALL_X0 + HALL_X1) * 0.5f, 1.5f, 0.0f);
+    s->envs[1].box_min = v3(HALL_X0, 0, -ROOM_HZ); s->envs[1].box_max = v3(HALL_X1, ROOM_H, ROOM_HZ);
+    s->portal.x0 = ROOM_HX; s->portal.x1 = HALL_X0;
+    s->portal.z = DOOR_Z; s->portal.half_w = DOOR_HW; s->portal.spring = DOOR_SPRING;
 
     /* ---- vertex buffer: filled by office_update ---- */
     glGenVertexArrays(1, &s->vao);

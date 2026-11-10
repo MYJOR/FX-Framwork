@@ -51,8 +51,12 @@ uniform vec2 uInvScreen;
 uniform vec2 uAO;                        // strength, share that also darkens direct light
 
 // ---- reflections --------------------------------------------------------------------------------
-uniform samplerCube uEnvTex;
-uniform vec3 uEnvPos, uRoomMin, uRoomMax;
+#define MAX_ENVS 2
+uniform samplerCube uEnvTex, uEnvTex1;   // one reflection probe per room
+uniform vec3 uEnvPos[MAX_ENVS], uEnvMin[MAX_ENVS], uEnvMax[MAX_ENVS];
+uniform int uEnvCount;
+uniform vec4 uProbeClamp;                // probe planes: last before the wall, first after it; first and last inside the doorway (z)
+uniform float uProbeClampY;              // highest probe plane under the arch
 uniform vec2 uEnv;                       // max lod, specular scale
 uniform int uProxyCount;
 uniform vec3 uProxyMin[MAX_PROXIES];
@@ -72,10 +76,25 @@ uniform vec3 uFlashColor;
 uniform vec4 uFlashShape;     // beam narrowing (1 = as authored), extra falloff with distance, harshness of the core, highlight strength
 uniform vec2 uGloss;          // smallest roughness any surface may have, scale on all roughness
 // Irradiance / pi arriving at P for a surface facing N.
-vec3 irradiance(vec3 P, vec3 N) {
+vec3 probeLight(vec3 P, vec3 N) {
     vec3 uvw = (P - uProbeOrigin) * uProbeInvExtent;
     vec4 n = vec4(1.0, N);
     return max(vec3(dot(texture(uShR, uvw), n), dot(texture(uShG, uvw), n), dot(texture(uShB, uvw), n)), 0.0);
+}
+vec3 irradiance(vec3 P, vec3 N) {
+    if (uPortal.y <= uPortal.x) return probeLight(P, N);
+    // Two rooms share the probe grid, and the probes inside the wall between them are dead. A point
+    // reads only the probes of its own room; near the doorway it blends over to the probes that
+    // stand in the opening, which is how light from the other room gets in.
+    vec3 Q = P;
+    if (P.x < uPortal.x) Q.x = min(P.x, uProbeClamp.x);
+    else if (P.x > uPortal.y) Q.x = max(P.x, uProbeClamp.y);
+    float dx = max(max(uPortal.x - P.x, P.x - uPortal.y), 0.0);
+    float dz = max(abs(P.z - uPortal.z) - uPortal.w, 0.0);
+    float w = (1.0 - smoothstep(0.0, 0.7, dx)) * (1.0 - smoothstep(0.0, 0.25, dz));
+    vec3 E = w < 1.0 ? probeLight(Q, N) : vec3(0.0);
+    if (w > 0.0) E = mix(E, probeLight(vec3(P.x, min(P.y, uProbeClampY), clamp(P.z, uProbeClamp.z, uProbeClamp.w)), N), w);
+    return E;
 }
 
 // ---- rectangular area light: diffuse form factor ------------------------------------------------
@@ -147,12 +166,23 @@ vec3 envBRDF(vec3 F0, float rough, float NoV) { // Karis' analytic fit of the sp
 vec3 reflection(vec3 P, vec3 R, float rough) {
     vec3 inv = 1.0 / (R + vec3(equal(R, vec3(0.0))) * 1e-6);
     // where the reflected ray leaves the room: the probe then lines up with the real walls
-    vec3 tm = max((uRoomMax - P) * inv, (uRoomMin - P) * inv);
-    float tRoom = min(tm.x, min(tm.y, tm.z));
-    vec3 col = textureLod(uEnvTex, P + R * tRoom - uEnvPos, rough * uEnv.x).rgb;
-    // the probe sees the room from one point; rescale it by how much light actually reaches here
-    float here = luma(irradiance(P, R)), there = luma(irradiance(uEnvPos, R));
-    col *= mix(1.0, clamp(here / max(there, 1e-3), 0.0, 1.0), 0.85);
+    // which room's probe: they cross-fade through the thickness of the wall between them
+    float second = uEnvCount > 1 ? smoothstep(uPortal.x, uPortal.y, P.x) : 0.0;
+    float here = luma(irradiance(P, R));
+    vec3 col = vec3(0.0);
+    float tRoom = 0.0;
+    for (int e = 0; e < 2; e++) {
+        float share = e == 0 ? 1.0 - second : second;
+        if (share <= 0.0) continue;
+        vec3 tm = max((uEnvMax[e] - P) * inv, (uEnvMin[e] - P) * inv);
+        float t = max(min(tm.x, min(tm.y, tm.z)), 0.0);
+        vec3 d = P + R * t - uEnvPos[e];
+        vec3 c = e == 0 ? textureLod(uEnvTex, d, rough * uEnv.x).rgb : textureLod(uEnvTex1, d, rough * uEnv.x).rgb;
+        // the probe sees the room from one point; rescale it by how much light actually reaches here
+        float there = luma(irradiance(uEnvPos[e], R));
+        col += share * c * mix(1.0, clamp(here / max(there, 1e-3), 0.0, 1.0), 0.85);
+        if (share >= 0.5) tRoom = t;
+    }
 
     // furniture: nearest proxy box hit before the wall
     float best = tRoom;
@@ -227,7 +257,7 @@ void main() {
     for (int i = 0; i < uLightCount; i++) {
         float ff = rectFormFactor(i, vWorld, N);
         if (ff <= 0.0) continue;
-        float s = shadow(i, vWorld, Ng);
+        float s = shadow(i, vWorld, Ng) * portalVis(vWorld, uLightPos[i], length(uLightU[i]) * 0.7);
         direct += uLightRadiance[i] * (ff * s);
         shadowAll += ff * s;
         weightAll += ff;
@@ -257,6 +287,7 @@ void main() {
                 beam *= lit / 6.0;
             }
         }
+        beam *= portalVis(vWorld, uFlashPos.xyz, 0.0); // walls stop it too
         float NoL = max(dot(N, L), 0.0);
         vec3 E = uFlashColor * (uFlashPos.w * beam * NoL / ((d2 + 0.25) * (1.0 + uFlashShape.y * d2)));
         direct += E;
@@ -275,7 +306,8 @@ void main() {
         vec4 lit_patch = texelFetch(uFlashBounceTex, ivec2(0), 0);
         vec3 Bv = uFlashPos.xyz + uFlashDir * max(lit_patch.a - 0.25, lit_patch.a * 0.5) - vWorld;
         float b2 = dot(Bv, Bv);
-        indirect += uFlashColor * lit_patch.rgb * (uFlashBounce * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
+        vec3 Bp = Bv + vWorld;
+        indirect += portalVis(vWorld, Bp, 0.3) * uFlashColor * lit_patch.rgb * (uFlashBounce * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
     }
     direct *= mix(1.0, ao, uAO.y);
     indirect *= ao;

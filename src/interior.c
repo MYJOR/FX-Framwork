@@ -38,7 +38,7 @@
 #define CAM_FAR 60.0f
 
 /* Texture units of the forward shader. */
-enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO, TU_FLASH_SHADOW, TU_FLASH_COOKIE, TU_FLASH_BOUNCE };
+enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO, TU_FLASH_SHADOW, TU_FLASH_COOKIE, TU_FLASH_BOUNCE, TU_ENV1 };
 /* Uniforms set per view or per draw, looked up once. */
 enum { U_VIEWPROJ, U_CAM, U_TINT, U_MAT, U_MAT2, U_EMISSIVE, U_CACHED };
 
@@ -160,6 +160,11 @@ static void draw_scene(const IntRenderer *r, const IntScene *s, int materials, u
     glDisable(GL_CULL_FACE);
 }
 
+static void set_portal(GLuint p, const IntScene *s) {
+    glUniform4f(ul(p, "uPortal"), s->portal.x0, s->portal.x1, s->portal.z, s->portal.half_w);
+    glUniform1f(ul(p, "uPortalSpring"), s->portal.spring);
+}
+
 /* Binds the forward program with everything that does not change between views. */
 static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, int pass, int view) {
     GLuint p = r->fwd.id;
@@ -176,6 +181,7 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
         glUniform1i(ul(p, "uShG"), TU_SH_G);
         glUniform1i(ul(p, "uShB"), TU_SH_B);
         glUniform1i(ul(p, "uEnvTex"), TU_ENV);
+        glUniform1i(ul(p, "uEnvTex1"), TU_ENV1);
         glUniform1i(ul(p, "uAOTex"), TU_AO);
         glUniform1i(ul(p, "uFlashShadow"), TU_FLASH_SHADOW);
         glUniform1i(ul(p, "uFlashCookie"), TU_FLASH_COOKIE);
@@ -213,9 +219,46 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
 
     set_v3(p, "uProbeOrigin", r->probe_origin);
     glUniform3f(ul(p, "uProbeInvExtent"), 1.0f / r->probe_extent.x, 1.0f / r->probe_extent.y, 1.0f / r->probe_extent.z);
-    set_v3(p, "uEnvPos", s->env_pos);
-    set_v3(p, "uRoomMin", s->room_min);
-    set_v3(p, "uRoomMax", s->room_max);
+    {
+        float ep[INT_MAX_ENVS * 3], emn[INT_MAX_ENVS * 3], emx[INT_MAX_ENVS * 3];
+        int ne = s->env_count < 1 ? 1 : s->env_count;
+        for (int i = 0; i < INT_MAX_ENVS; i++) { /* unused slots repeat the first probe */
+            const IntEnv *e = &s->envs[i < ne ? i : 0];
+            memcpy(ep + i * 3, &e->pos, 12); memcpy(emn + i * 3, &e->box_min, 12); memcpy(emx + i * 3, &e->box_max, 12);
+        }
+        glUniform3fv(ul(p, "uEnvPos"), INT_MAX_ENVS, ep);
+        glUniform3fv(ul(p, "uEnvMin"), INT_MAX_ENVS, emn);
+        glUniform3fv(ul(p, "uEnvMax"), INT_MAX_ENVS, emx);
+        glUniform1i(ul(p, "uEnvCount"), ne);
+    }
+    set_portal(p, s);
+    if (s->portal.x1 > s->portal.x0) {
+        /* Probes inside the wall hold nothing. Tell the shader which probe planes are the last in open
+           air on either side of it, and which lie inside the doorway. */
+        const IntPortal *d = &s->portal;
+        const float m = 0.05f;
+        float xa = s->room_min.x, xb = s->room_max.x, zlo = d->z, zhi = d->z, ytop = 0.0f;
+        int have_a = 0, have_b = 0, have_z = 0;
+        for (int i = 0; i < r->probe_n[0]; i++) {
+            float x = r->probe_origin.x + ((float)i + 0.5f) * r->probe_extent.x / (float)r->probe_n[0];
+            if (x <= d->x0 - m) { xa = x; have_a = 1; }
+            if (x >= d->x1 + m && !have_b) { xb = x; have_b = 1; }
+        }
+        for (int i = 0; i < r->probe_n[2]; i++) {
+            float z = r->probe_origin.z + ((float)i + 0.5f) * r->probe_extent.z / (float)r->probe_n[2];
+            if (z < d->z - d->half_w + m || z > d->z + d->half_w - m) continue;
+            if (!have_z) zlo = z;
+            zhi = z; have_z = 1;
+        }
+        float off = fabsf(zlo - d->z) > fabsf(zhi - d->z) ? fabsf(zlo - d->z) : fabsf(zhi - d->z);
+        float head = d->spring + sqrtf(d->half_w * d->half_w > off * off ? d->half_w * d->half_w - off * off : 0.0f) - m;
+        for (int i = 0; i < r->probe_n[1]; i++) {
+            float y = r->probe_origin.y + ((float)i + 0.5f) * r->probe_extent.y / (float)r->probe_n[1];
+            if (y <= head || i == 0) ytop = y;
+        }
+        glUniform4f(ul(p, "uProbeClamp"), xa, xb, zlo, zhi);
+        glUniform1f(ul(p, "uProbeClampY"), ytop);
+    }
     glUniform2f(ul(p, "uEnv"), ENV_MAX_LOD, look->reflection);
     glUniform1i(ul(p, "uProxyCount"), s->proxy_count);
     if (s->proxy_count) {
@@ -237,7 +280,8 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     glActiveTexture(GL_TEXTURE0 + TU_BLOCKER); glBindTexture(GL_TEXTURE_2D, r->blocker_tex);
     for (int c = 0; c < 3; c++) { glActiveTexture(GL_TEXTURE0 + TU_SH_R + c); glBindTexture(GL_TEXTURE_3D, r->sh_tex[c]); }
     /* the reflection probe must not be bound while it is being rendered */
-    glActiveTexture(GL_TEXTURE0 + TU_ENV);     glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex);
+    glActiveTexture(GL_TEXTURE0 + TU_ENV);     glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex[0]);
+    glActiveTexture(GL_TEXTURE0 + TU_ENV1);    glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex[s->env_count > 1 ? 1 : 0]);
     glActiveTexture(GL_TEXTURE0 + TU_AO);      glBindTexture(GL_TEXTURE_2D, r->white_tex);
     glActiveTexture(GL_TEXTURE0 + TU_FLASH_SHADOW); glBindTexture(GL_TEXTURE_2D, r->flash_shadow);
     glActiveTexture(GL_TEXTURE0 + TU_FLASH_COOKIE); glBindTexture(GL_TEXTURE_2D, r->flash_cookie);
@@ -633,18 +677,21 @@ static void bake_probes(IntRenderer *r, const IntScene *s, const IntLook *look) 
 
 /* ---- bake: reflection probe --------------------------------------------------------------------- */
 
-static void bake_env(IntRenderer *r, const IntScene *s, const IntLook *look) {
+static void bake_env_one(IntRenderer *r, const IntScene *s, const IntLook *look, int k) {
     const int levels = (int)ENV_MAX_LOD + 1;
-    if (!r->env_tex) {
+    V3 env_pos = s->envs[k].pos;
+    if (!r->env_raw) {
         r->env_raw = make_tex(GL_TEXTURE_CUBE_MAP, GL_LINEAR_MIPMAP_LINEAR, GL_CLAMP_TO_EDGE);
         for (int f = 0; f < 6; f++)
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_RGBA16F, ENV_RES, ENV_RES, 0, GL_RGBA, GL_FLOAT, NULL);
-        r->env_tex = make_tex(GL_TEXTURE_CUBE_MAP, GL_LINEAR_MIPMAP_LINEAR, GL_CLAMP_TO_EDGE);
+        r->env_depth = make_tex2d(GL_DEPTH_COMPONENT24, ENV_RES, ENV_RES, GL_DEPTH_COMPONENT, GL_FLOAT, NULL, GL_NEAREST);
+    }
+    if (!r->env_tex[k]) {
+        r->env_tex[k] = make_tex(GL_TEXTURE_CUBE_MAP, GL_LINEAR_MIPMAP_LINEAR, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, levels - 1);
         for (int m = 0; m < levels; m++)
             for (int f = 0; f < 6; f++)
                 glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, m, GL_RGBA16F, ENV_RES >> m, ENV_RES >> m, 0, GL_RGBA, GL_FLOAT, NULL);
-        r->env_depth = make_tex2d(GL_DEPTH_COMPONENT24, ENV_RES, ENV_RES, GL_DEPTH_COMPONENT, GL_FLOAT, NULL, GL_NEAREST);
     }
 
     /* capture the lit room */
@@ -657,7 +704,7 @@ static void bake_env(IntRenderer *r, const IntScene *s, const IntLook *look) {
         if (f == 0) check_fbo("reflection probe");
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        fwd_view(r, cube_view_proj(s->env_pos, f), s->env_pos);
+        fwd_view(r, cube_view_proj(env_pos, f), env_pos);
         draw_scene(r, s, 1, MAT_SHELL, 1); /* only the room itself: box projection is exact for it */
     }
     glBindTexture(GL_TEXTURE_CUBE_MAP, r->env_raw);
@@ -682,11 +729,15 @@ static void bake_env(IntRenderer *r, const IntScene *s, const IntLook *look) {
             set_v3(p, "uFaceFwd", fw);
             set_v3(p, "uFaceRight", rt);
             set_v3(p, "uFaceUp", v3_cross(rt, fw));
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, r->env_tex, m);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, r->env_tex[k], m);
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
     }
     glEnable(GL_DEPTH_TEST);
+}
+
+static void bake_env(IntRenderer *r, const IntScene *s, const IntLook *look) {
+    for (int k = 0; k < s->env_count && k < INT_MAX_ENVS; k++) bake_env_one(r, s, look, k);
 }
 
 void interior_bake(IntRenderer *r, const IntScene *s, const IntLook *look) {
@@ -997,6 +1048,7 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
         set_v3(g, "uFwd", ahead);
         glUniform4f(ul(g, "uFlashPos"), r->flash_pos.x, r->flash_pos.y, r->flash_pos.z, r->flash);
         glUniformMatrix4fv(ul(g, "uFlashMat"), 1, GL_FALSE, flash_mat.m);
+        set_portal(g, s);
         set_v3(g, "uFlashColor", r->flash_color);
         glUniform4f(ul(g, "uFlashShape"), r->flash_cone, r->flash_falloff, r->flash_harsh, r->flash_spec);
         glDrawArrays(GL_TRIANGLES, 0, 3);
