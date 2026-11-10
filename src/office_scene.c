@@ -18,9 +18,7 @@
 #define PANEL_FRAME_Z 0.061f
 
 #define DESK_Z (-1.5f)    /* desk centre */
-#define DESK_HX 0.82f
-#define DESK_HZ 0.42f
-#define DESK_H 0.77f
+#define DESK_H 0.75f      /* the table model is a low side table: scaled up to desk height */
 
 #define CHAIR_X 0.06f
 #define CHAIR_Z (-2.38f)
@@ -567,6 +565,20 @@ int office_build(Office *o, const char *asset_dir) {
     snprintf(path2, sizeof path2, "%s/%s_metallic.png", asset_dir, chair);
     GLuint chair_orm = load_orm_texture(path, path2);
 
+    /* desk: mesh + PBR maps (the 2k PNGs are conversions of the 4k JPG / EXR originals next to them) */
+    FbxMesh table;
+    snprintf(path, sizeof path, "%s/table/gallinera_table_4k.fbx", asset_dir);
+    if (!fbx_load_mesh(path, &table)) {
+        fprintf(stderr, "[office] cannot load the desk model %s\n", path);
+        return 0;
+    }
+    snprintf(path, sizeof path, "%s/table/textures/gallinera_table_diff_2k.png", asset_dir);
+    GLuint table_albedo = load_png_texture(path, 1);
+    snprintf(path, sizeof path, "%s/table/textures/gallinera_table_nor_gl_2k.png", asset_dir);
+    GLuint table_normal = load_png_texture(path, 0);
+    snprintf(path, sizeof path, "%s/table/textures/gallinera_table_orm_2k.png", asset_dir);
+    GLuint table_orm = load_png_texture(path, 0); /* R = roughness, G = metallic (none) */
+
     /* ---- materials ---- */
     s->mat_count = M_COUNT;
     s->mats[M_CHAIR] = material(chair_albedo, 1.0f, MAT_TWO_SIDED | MAT_CASTS_SHADOW);
@@ -579,12 +591,12 @@ int office_build(Office *o, const char *asset_dir) {
     s->mats[M_CHAIR].tint[0] = s->mats[M_CHAIR].tint[1] = s->mats[M_CHAIR].tint[2] = 2.3f;
     s->mats[M_CHAIR].roughness = chair_orm ? 0.85f : 0.5f;
     s->mats[M_CHAIR].specular = 0.055f;
-    /* desk: the floor's wood grain, desaturated and stained dark cherry, with a satin varnish */
-    s->mats[M_DESK] = material(floor_tex, 0.34f, MAT_CASTS_SHADOW);
-    s->mats[M_DESK].desaturate = 1.0f;
-    s->mats[M_DESK].tint[0] = 0.36f; s->mats[M_DESK].tint[1] = 0.105f; s->mats[M_DESK].tint[2] = 0.075f;
-    s->mats[M_DESK].rough_variation = 0.25f;
-    s->mats[M_DESK].specular = 0.06f;
+    /* desk: an oiled dark wood table */
+    s->mats[M_DESK] = material(table_albedo, 1.0f, MAT_TWO_SIDED | MAT_CASTS_SHADOW);
+    s->mats[M_DESK].normal = table_normal;
+    s->mats[M_DESK].orm = table_orm;
+    if (!table_orm) s->mats[M_DESK].roughness = 0.6f;
+    s->mats[M_DESK].specular = 0.05f;
     s->mats[M_BASEBOARD] = material(base_tex, 0.4f, MAT_SHELL);
     s->mats[M_PANEL] = material(panel_tex, 0.5f, MAT_SHELL);
     for (int i = 0; i < INT_MAX_LIGHTS; i++) /* one per light: office_update sets their radiance */
@@ -614,29 +626,24 @@ int office_build(Office *o, const char *asset_dir) {
     obj->solid = 1;
     fbx_free(&mesh);
 
-    {   /* double-pedestal desk: top, two pedestals on plinths, a modesty panel facing the room */
-        const float su = 1.3f, sv = 0.42f; /* shrink the floor planks into furniture-scale grain */
-        float z0 = -DESK_HZ, z1 = DESK_HZ;
-        V3 top0 = v3(-DESK_HX, DESK_H - 0.045f, z0), top1 = v3(DESK_HX, DESK_H, z1);
-        V3 mod0 = v3(-DESK_HX + 0.46f, 0.20f, z1 - 0.16f), mod1 = v3(DESK_HX - 0.46f, DESK_H - 0.045f, z1 - 0.14f);
-        box(&vb, top0, top1, su, sv);
-        for (int side = -1; side <= 1; side += 2) {
-            float xa = side < 0 ? -DESK_HX + 0.04f : DESK_HX - 0.46f, xb = xa + 0.42f;
-            box(&vb, v3(xa, 0.07f, z0 + 0.04f), v3(xb, DESK_H - 0.045f, z1 - 0.04f), su, sv);
-            box(&vb, v3(xa - 0.02f, 0.0f, z0 + 0.02f), v3(xb + 0.02f, 0.07f, z1 - 0.02f), su, sv);
+    {   /* The table model is Z-up, in metres, centred on its footprint: turn it Y-up and scale it to desk height. */
+        float scale = DESK_H / (table.max[2] - table.min[2]);
+        float cx = (table.min[0] + table.max[0]) * 0.5f, cy = (table.min[1] + table.max[1]) * 0.5f;
+        for (int i = 0; i < table.vertex_count; i++) {
+            const float *v = table.v + (size_t)i * 8;
+            push_vertex(&vb, v3((v[0] - cx) * scale, (v[2] - table.min[2]) * scale, -(v[1] - cy) * scale),
+                        v3(v[3], v[5], -v[4]), v[6], v[7]);
         }
-        box(&vb, mod0, mod1, su, sv);
+        float hx = (table.max[0] - table.min[0]) * 0.5f * scale, hz = (table.max[1] - table.min[1]) * 0.5f * scale;
         end_part(&o->protos[OT_DESK], &vb, M_DESK, 0);
         obj = end_proto(&o->protos[OT_DESK], OT_DESK, OBJ_FURNITURE, 0.0f);
         obj->solid = 1;
-        object_box(obj, top0, top1);
-        for (int side = -1; side <= 1; side += 2) {
-            float xa = side < 0 ? -DESK_HX + 0.04f : DESK_HX - 0.46f, xb = xa + 0.42f;
-            object_box(obj, v3(xa - 0.02f, 0.0f, z0 + 0.02f), v3(xb + 0.02f, DESK_H - 0.045f, z1 - 0.02f));
-        }
-        object_box(obj, mod0, mod1);
+        /* reflection stand-ins: the overhanging top, and the slatted body under it as one block */
+        object_box(obj, v3(-hx, DESK_H - 0.05f, -hz), v3(hx, DESK_H, hz));
+        object_box(obj, v3(-hx + 0.04f, 0.03f, -hz + 0.04f), v3(hx - 0.04f, DESK_H - 0.05f, hz - 0.04f));
+        fbx_free(&table);
     }
-    s->proxy_albedo = v3(0.32f * s->mats[M_DESK].tint[0], 0.32f * s->mats[M_DESK].tint[1], 0.32f * s->mats[M_DESK].tint[2]);
+    s->proxy_albedo = v3(0.035f, 0.022f, 0.015f); /* the table's wood, roughly */
 
     {   /* 0.6 x 1.2 m light panel: a framed fixture plus its diffuser, the lit area, drawn as its own
            piece of geometry so its outline is antialiased like any other edge */

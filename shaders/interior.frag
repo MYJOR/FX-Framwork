@@ -63,8 +63,14 @@ uniform vec3 uProxyAlbedo;
 uniform float uSceneLight;   // 1 = lights on, 0 = dark
 uniform vec4 uFlashPos;      // xyz, brightness (0 = off)
 uniform vec3 uFlashDir;
-uniform vec4 uFlashBounce;   // where the beam lands, strength of the light that comes back from there
-const vec3 FLASH_COLOR = vec3(1.0, 0.96, 0.88);
+uniform mat4 uFlashMat;      // world -> the torch's clip space: shadow map and beam pattern
+uniform sampler2DShadow uFlashShadow;
+uniform sampler2D uFlashCookie;
+uniform sampler2D uFlashBounceTex; // one texel: colour of what the beam lands on, how far away that is
+uniform float uFlashBounce;        // strength of the light that comes back from there
+uniform vec3 uFlashColor;
+uniform vec4 uFlashShape;     // beam narrowing (1 = as authored), extra falloff with distance, harshness of the core, highlight strength
+uniform vec2 uGloss;          // smallest roughness any surface may have, scale on all roughness
 // Irradiance / pi arriving at P for a surface facing N.
 vec3 irradiance(vec3 P, vec3 N) {
     vec3 uvw = (P - uProbeOrigin) * uProbeInvExtent;
@@ -205,7 +211,7 @@ void main() {
     vec3 dnx = dFdx(N), dny = dFdy(N);
     float variance = min(0.5 * (dot(dnx, dnx) + dot(dny, dny)), 0.18);
     rough = sqrt(clamp(rough * rough + variance, 0.0, 1.0));
-    rough = clamp(rough, 0.22, 1.0); // stylised: nothing is mirror sharp
+    rough = clamp(rough * uGloss.y, uGloss.x, 1.0); // stylised: nothing is mirror sharp
 
     vec3 V = normalize(uCam - vWorld);
     float NoV = max(dot(N, V), 0.0);
@@ -236,9 +242,23 @@ void main() {
         vec3 L = Lv * inversesqrt(d2);
         float c = dot(-L, uFlashDir);
         // a bright core, a dimmer ring around it from the reflector, and a little spill
-        float beam = smoothstep(0.955, 0.992, c) * 0.62 + smoothstep(0.885, 0.93, c) * 0.34 + smoothstep(0.5, 0.9, c) * 0.04;
+        float beam = smoothstep(0.5, 0.9, c) * 0.035; // spill; the beam itself comes from the pattern texture
+        vec4 fc = uFlashMat * vec4(vWorld + Ng * 0.012, 1.0);
+        if (fc.w > 0.0) {
+            vec3 fp = fc.xyz / fc.w * 0.5 + 0.5;
+            if (fp.x > 0.0 && fp.x < 1.0 && fp.y > 0.0 && fp.y < 1.0 && fp.z < 1.0) {
+                vec2 cuv = (fp.xy - 0.5) * uFlashShape.x + 0.5;
+                float ck = all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) ? texture(uFlashCookie, cuv).r : 0.0;
+                beam += mix(ck, ck * ck * 2.2, uFlashShape.z);
+                // a small source: shadows are crisp, only softened enough to hide the texels
+                float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+                float lit = 0.0;
+                for (int i = 0; i < 6; i++) lit += texture(uFlashShadow, vec3(fp.xy + vogel(i, 6, rot) * (1.6 / 768.0), fp.z));
+                beam *= lit / 6.0;
+            }
+        }
         float NoL = max(dot(N, L), 0.0);
-        vec3 E = FLASH_COLOR * (uFlashPos.w * beam * NoL / (d2 + 0.25));
+        vec3 E = uFlashColor * (uFlashPos.w * beam * NoL / ((d2 + 0.25) * (1.0 + uFlashShape.y * d2)));
         direct += E;
         if (E != vec3(0.0)) { // GGX highlight
             vec3 H = normalize(L + V);
@@ -249,12 +269,13 @@ void main() {
             float k = a * 0.5;
             float vis = 0.25 / ((NoL * (1.0 - k) + k) * (NoV * (1.0 - k) + k) + 1e-4);
             vec3 F = F0 + (1.0 - F0) * pow(1.0 - VoH, 5.0);
-            flashSpec = E * D * vis * F * uEnv.y;
+            flashSpec = E * D * vis * F * (uEnv.y * uFlashShape.w);
         }
         // one bounce, as a soft point light sitting where the beam lands
-        vec3 Bv = uFlashBounce.xyz - vWorld;
+        vec4 lit_patch = texelFetch(uFlashBounceTex, ivec2(0), 0);
+        vec3 Bv = uFlashPos.xyz + uFlashDir * max(lit_patch.a - 0.25, lit_patch.a * 0.5) - vWorld;
         float b2 = dot(Bv, Bv);
-        indirect += FLASH_COLOR * (uFlashBounce.w * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
+        indirect += uFlashColor * lit_patch.rgb * (uFlashBounce * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
     }
     direct *= mix(1.0, ao, uAO.y);
     indirect *= ao;
@@ -273,7 +294,7 @@ void main() {
     // light diffusers. Black for the irradiance probes: their light is already the analytic direct term.
     if (uEmissive != vec3(0.0)) col = uPass == PASS_PROBE ? vec3(0.0) : mix(vec3(0.7) * (direct + indirect), uEmissive, uSceneLight); // switched off: a milky sheet of plastic
 
-    if (uDebugView == 1) col = albedo;
+    if (uDebugView == 1 || uDebugView == 10) col = albedo; // 10: capture for the torch's bounce
     else if (uDebugView == 2) col = N * 0.5 + 0.5;
     else if (uDebugView == 3) col = direct + indirect;
     else if (uDebugView == 4) col = direct;
@@ -283,5 +304,5 @@ void main() {
     else if (uDebugView == 8) col = vec3(rough, metal, 0.0);
     else if (uDebugView == 9) col = spec;
 
-    outColor = vec4(col, 1.0);
+    outColor = vec4(col, uDebugView == 10 ? distance(uCam, vWorld) : 1.0);
 }

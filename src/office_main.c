@@ -18,7 +18,7 @@
  *   Y    scene editor: frees the cursor and opens the panel (src/office_editor.c). Objects are
  *        moved in the view and the lighting is rebaked as they move. Hold the right mouse button
  *        to look around while editing.
- *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L room lights   F5 vsync
+ *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L room lights   H horror look   F5 vsync
  *   - / = exposure                  Esc quit (in the editor: deselect, then back to playing)
  *   gamepad: left stick move, right stick look, RT run, B crouch
  */
@@ -34,6 +34,7 @@
 #define RUN_SPEED 3.9f
 #define CROUCH_SPEED 1.1f
 #define TILT_RATE 3.5f /* 1/s: how quickly the camera tilt follows the movement; lower = lazier */
+#define IDLE_SWAY 1.0f   /* idle camera sway: 1 = about a third of a degree, 0 = off */
 #define FLASH_POWER 16.0f /* torch brightness */
 #define ZOOM_FACTOR 2.2f /* magnification while the right mouse button is held */
 #define ZOOM_RATE 10.0f  /* 1/s: how quickly the zoom eases in and out */
@@ -112,6 +113,17 @@ static V3 player_eye(const FpsPlayer *p, float bob) {
     return v3(p->pos.x + cosf(p->yaw) * side, p->pos.y + p->eye + up, p->pos.z + sinf(p->yaw) * side);
 }
 
+/* How bright the ceiling tubes are, t seconds after the switch: a few false starts, then they catch
+   and finish warming up. */
+static float tube_level(float t) {
+    static const float keys[][2] = {{0.00f, 0.55f}, {0.05f, 0.04f}, {0.17f, 0.75f}, {0.22f, 0.08f},
+                                    {0.36f, 0.90f}, {0.41f, 0.35f}, {0.50f, 0.80f}};
+    if (t >= 0.5f) return 1.0f - 0.2f * expf(-(t - 0.5f) * 4.0f);
+    float v = keys[0][1];
+    for (int i = 0; i < 7; i++) if (t >= keys[i][0]) v = keys[i][1];
+    return v;
+}
+
 static void save_screenshot(const char *path, int w, int h) {
     unsigned char *px = (unsigned char *)malloc((size_t)w * h * 3);
     unsigned char *flipped = (unsigned char *)malloc((size_t)w * h * 3);
@@ -149,8 +161,10 @@ int main(int argc, char **argv) {
     float arg_x = 0, arg_z = 0, arg_yaw = 0, arg_pitch = -0.06f, arg_eye = 0, arg_roll = 0;
     IntLook look = interior_default_look();
     float lens_curve = look.lens_curve;
+    float idle_t = 0.0f, idle_amount = 1.0f, arg_sway = -1.0f; /* idle camera sway: its clock, how still the player is */
+    int horror = 0; float flick_wait = 3.0f, flick_left = 0.0f, flick_level = 1.0f; /* H: the harsh, dark look */
     int flash_on = 0, lights_on = 1; /* F: hand torch, L: the room's lights */
-    float flash_level = 0.0f, light_level = 1.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
+    float flash_level = 0.0f, light_level = 1.0f, light_timer = 10.0f, sway_t = 0.0f, sway_step = 0.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
     int arg_zoom = 0, default_scene = 0;
     const char *cmds[16]; int cmd_count = 0; /* editor commands to run, one every other frame */
     float focus = 0.0f; /* the zoom the lens is focused for; trails behind zoom */
@@ -192,6 +206,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--noao")) look.ao_strength = 0.0f;
         else if (!strcmp(argv[i], "--nodof")) look.dof_strength = 0.0f;
         else if (!strcmp(argv[i], "--nolens")) lens_curve = 0.0f;
+        else if (!strcmp(argv[i], "--noadapt")) look.adapt_max = 1.0f;
+        else if (!strcmp(argv[i], "--horror")) horror = 1;
+        else if (!strcmp(argv[i], "--sway") && i + 1 < argc) arg_sway = (float)atof(argv[++i]); /* test: the idle sway as it is after this many seconds */
+        else if (!strcmp(argv[i], "--nobloom")) look.bloom = 0.0f;
+        else if (!strcmp(argv[i], "--noair")) look.air = 0.0f;
         else if (!strcmp(argv[i], "--default-scene")) default_scene = 1; /* ignore the saved scene file */
         else if (!strcmp(argv[i], "--cmd") && i + 1 < argc) { if (cmd_count < 16) cmds[cmd_count++] = argv[++i]; else i++; } /* test: an editor command */
         else if (!strcmp(argv[i], "--flash")) flash_on = 1;
@@ -264,6 +283,7 @@ int main(int argc, char **argv) {
     if (!editor_init(&ed, &look)) { fprintf(stderr, "editor UI init failed\n"); return 1; }
     ed.view = arg_view;
     ed.vsync = vsync;
+    IntLook normal_look = look; /* as set up by the command line; the horror look overrides parts of it */
     ed.active = arg_edit;
     snprintf(ed.scene_path, sizeof ed.scene_path, "%s", scene_path);
     if (arg_select >= 0 && arg_select < office.object_count) ed.selected = arg_select;
@@ -363,7 +383,8 @@ int main(int argc, char **argv) {
         if (PRESSED(VK_F3)) ed.reflections = !ed.reflections;
         if (PRESSED(VK_F4)) ed.dof = !ed.dof;
         if (PRESSED('F') && !ed.active && !typing) flash_on = !flash_on;          /* in the editor F frames the selection */
-        if (PRESSED('L') && !typing && !ctrl) lights_on = !lights_on;
+        if (PRESSED('H') && !ed.active && !typing) horror = !horror;               /* in the editor H hides the selection */
+        if (PRESSED('L') && !typing && !ctrl) { lights_on = !lights_on; light_timer = 0.0f; }
         if (PRESSED(VK_F5)) { ed.vsync = !ed.vsync; platform_set_vsync(ed.vsync); }
         if (!typing) {
             if (plat.keys[VK_OEM_MINUS]) look.exposure *= expf(-0.8f * dt);
@@ -395,6 +416,32 @@ int main(int argc, char **argv) {
         look.ao_strength = ed.ao ? ed.ao_strength : 0.0f;
         look.reflection = ed.reflections ? 1.0f : 0.0f;
         look.dof_strength = (ed.dof && !ed.active) ? 1.0f : 0.0f; /* the editor stays sharp */
+        {   /* The horror look: nothing but the torch, a tight hard beam, wet surfaces, a cold grainy picture. */
+            int hz = horror && !ed.active;
+            look.saturation = hz ? 0.78f : normal_look.saturation;
+            look.contrast = hz ? 1.16f : normal_look.contrast;
+            look.vignette = hz ? 0.50f : normal_look.vignette;
+            look.adapt_max = normal_look.adapt_max <= 1.0f ? 1.0f : hz ? (flash_on ? 1.35f : 2.5f) : normal_look.adapt_max;
+            look.grain = hz ? 0.045f : 0.0f;       look.grain_size = hz ? 1.6f : 1.0f;
+            look.grade_cast = hz ? 1.0f : 0.0f;    look.black_crush = hz ? 0.035f : 0.0f;
+            look.chroma = hz ? 0.006f : 0.0f;      look.lens_dirt = hz ? 0.16f : 0.0f;
+            look.rough_min = hz ? 0.10f : normal_look.rough_min;
+            look.rough_scale = hz ? 0.60f : normal_look.rough_scale;
+            look.air = normal_look.air * (hz ? 0.3f : 1.0f); /* the beam is far stronger and sits mid-screen: keep the haze thin */
+            look.bloom = normal_look.bloom * (hz ? 1.5f : 1.0f);
+            renderer.flash_color = hz ? v3(0.86f, 1.0f, 0.93f) : v3(1.0f, 0.96f, 0.88f);
+            renderer.flash_cone = hz ? 1.3f : 1.0f;
+            renderer.flash_falloff = hz ? 0.07f : 0.0f;
+            renderer.flash_harsh = hz ? 1.0f : 0.0f;
+            renderer.flash_spec = hz ? 2.5f : 1.0f;
+            renderer.flash_bounce = hz ? 0.35f : 1.0f;
+            /* a tired battery: now and then the beam sags for a moment */
+            if (hz && !shot && !bench) {
+                if (flick_left > 0.0f) { flick_left -= dt; flick_level = 0.35f + 0.5f * (float)rand() / (float)RAND_MAX; }
+                else { flick_level = 1.0f; flick_wait -= dt; }
+                if (flick_wait <= 0.0f) { flick_wait = 4.0f + 9.0f * (float)rand() / (float)RAND_MAX; flick_left = 0.08f + 0.22f * (float)rand() / (float)RAND_MAX; }
+            } else flick_level = 1.0f;
+        }
         look.lens_curve = ed.active ? 0.0f : lens_curve;                /* ... and straight, so picking lines up */
 
         /* apply what the editor changed last frame, then let the lighting catch up */
@@ -459,17 +506,46 @@ int main(int argc, char **argv) {
         player.tilt += (tilt - player.tilt) * (1.0f - expf(-TILT_RATE * dt));
         renderer.cam_roll = ed.active ? 0.0f : player.tilt + arg_roll;
         V3 eye = player_eye(&player, ed.active ? 0.0f : 1.0f), fwd = cam_forward(player.yaw, player.pitch);
+        /* Idle sway: nobody holds their head still. A slow wander of the view, a breath that lifts it, and a
+           trace of roll; layered sines with unrelated periods so it never visibly repeats. It fades to a
+           third while walking (the step tilt takes over) and shrinks with the zoom, like the view itself. */
+        if (!ed.active && ((!shot && !bench) || arg_sway >= 0.0f)) {
+            float moving = clampf(sqrtf(player.vx * player.vx + player.vz * player.vz) / WALK_SPEED, 0.0f, 1.0f);
+            idle_amount += ((1.0f - 0.65f * moving) - idle_amount) * (1.0f - expf(-dt * 2.5f));
+            idle_t = arg_sway >= 0.0f ? arg_sway : idle_t + dt;
+            float t = idle_t, a = IDLE_SWAY * idle_amount * (base_tan > 0.0f ? zoom_tan / base_tan : 1.0f);
+            float breath = sinf(t * 1.45f); /* about fourteen breaths a minute */
+            float yaw = a * (0.0042f * sinf(t * 0.53f) + 0.0021f * sinf(t * 1.17f + 1.3f) + 0.0008f * sinf(t * 2.9f + 0.4f));
+            float pitch = a * (0.0030f * sinf(t * 0.71f + 2.1f) + 0.0016f * breath + 0.0007f * sinf(t * 3.3f + 1.9f));
+            fwd = cam_forward(player.yaw + yaw, player.pitch + pitch);
+            renderer.cam_roll += a * (0.0030f * sinf(t * 0.43f + 0.8f) + 0.0012f * sinf(t * 1.03f));
+            eye.y += a * 0.0035f * breath;
+        }
         /* Room lights fade like a tube dying, the torch snaps on. The torch is held low on the right and
            trails the view a little, so the beam swings after the head instead of being glued to the screen. */
-        light_level += ((lights_on ? 1.0f : 0.0f) - light_level) * (1.0f - expf(-dt * (lights_on ? 9.0f : 14.0f)));
+        light_timer += dt;
+        if (lights_on) light_level = tube_level(light_timer);       /* tubes stutter on ... */
+        else light_level *= expf(-dt * 16.0f);                      /* ... and die with a short afterglow */
         flash_level += ((flash_on && !ed.active ? 1.0f : 0.0f) - flash_level) * (1.0f - expf(-dt * 30.0f));
         {
-            float k = shot ? 1.0f : 1.0f - expf(-dt * 12.0f);
+            int hz = horror && !ed.active;
+            float k = shot ? 1.0f : 1.0f - expf(-dt * (hz ? 5.5f : 12.0f)); /* the horror torch trails further behind */
             flash_dir = v3_norm(v3_add(flash_dir, v3_scale(v3_add(fwd, v3_scale(flash_dir, -1.0f)), k)));
             V3 right = v3_norm(v3_cross(fwd, v3(0.0f, 1.0f, 0.0f)));
-            renderer.flash = flash_level < 0.01f ? 0.0f : flash_level * FLASH_POWER;
+            renderer.flash = flash_level < 0.01f ? 0.0f : flash_level * FLASH_POWER * (hz ? 1.7f * flick_level : 1.0f);
             renderer.flash_dir = flash_dir;
-            renderer.flash_pos = v3_add(eye, v3_add(v3_scale(right, 0.16f), v3(0.0f, -0.20f, 0.0f)));
+            if (!shot && !bench) { /* a hand is never still: a slow drift, and a swing with every step */
+                float speed = sqrtf(player.vx * player.vx + player.vz * player.vz), walk = clampf(speed / WALK_SPEED, 0.0f, 1.5f);
+                sway_t += dt; sway_step += dt * speed * 4.4f;
+                float sx = 0.004f * sinf(sway_t * 1.3f) + 0.003f * sinf(sway_t * 2.9f + 1.0f) + walk * 0.016f * sinf(sway_step);
+                float sy = 0.004f * sinf(sway_t * 1.7f + 2.0f) + walk * 0.011f * sinf(sway_step * 2.0f + 0.5f);
+                V3 upv = v3_cross(right, flash_dir);
+                renderer.flash_dir = v3_norm(v3_add(flash_dir, v3_add(v3_scale(right, sx), v3_scale(upv, sy))));
+            }
+            renderer.flash_pos = hz ? v3_add(eye, v3_add(v3_scale(right, 0.07f), v3(0.0f, -0.36f, 0.0f))) /* chest height, near the middle */
+                                    : v3_add(eye, v3_add(v3_scale(right, 0.16f), v3(0.0f, -0.20f, 0.0f)));
+            renderer.frame_dt = (shot || bench) ? 0.0f : dt; /* screenshots get the settled eye */
+            renderer.grain_seed = shot ? 0.0f : (float)(frame % 61);
             renderer.scene_light = light_level < 0.002f ? 0.0f : light_level;
         }
         int view_rect[4]; /* the whole window while playing, the space between the panels while editing */
@@ -489,6 +565,7 @@ int main(int argc, char **argv) {
         if (shot && frame >= arg_frames) {
             glBindFramebuffer(GL_FRAMEBUFFER, renderer.out_fbo);
             save_screenshot(shot, plat.width, plat.height);
+            { float metered = 0.0f, gain = interior_exposure_gain(&renderer, &metered); printf("eye: gain %.2f, metered luminance %.4f\n", gain, metered); }
             if (have_drag || arg_wheel != 0.0f || cmd_count) /* what the scripted input did */
                 for (int i = 0; i < office.object_count; i++) {
                     const OfficeObject *obj = &office.objects[i];

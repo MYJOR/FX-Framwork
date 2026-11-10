@@ -82,6 +82,14 @@ typedef struct {
     float dof_edge;        /* blur towards the borders of the screen, like a soft lens: 0 = none, 1 = full blur in the corners */
     float dof_full;        /* metres: fully blurred at this distance and closer */
     float dof_defocus;     /* whole picture out of focus, 0..1: for a lens that is still finding focus */
+    float bloom;           /* glow around what is brighter than the display can show. 0 = off */
+    float air;             /* how much the torch beam shows in the air. 0 = off */
+    float grain, grain_size; /* film grain over the whole picture (0 = none), in pixels */
+    float grade_cast, black_crush; /* green-grey cast 0..1; share of the darkest tones crushed to black */
+    float chroma;          /* colour fringing towards the screen edges, 0 = none */
+    float lens_dirt;       /* smears on the lens that light up near bright things, 0 = none */
+    float rough_min, rough_scale; /* smallest roughness allowed; scale on every material's roughness (lower = wetter) */
+    float adapt_max;       /* eye adaptation: how many times the exposure may rise in the dark. 1 = off */
     float lens_curve;      /* barrel distortion: straight lines bow outwards towards the screen sides. 0 = none */
     int msaa;              /* 2, 4 or 8 */
 } IntLook;
@@ -93,7 +101,7 @@ enum {
 const char *interior_view_name(int view);
 
 typedef struct {
-    Program fwd, depth, gbuf, ao, blur, post, prefilter, dof, dof_mix;
+    Program fwd, depth, gbuf, ao, blur, post, prefilter, dof, dof_mix, meter, adapt, bounce, glow, glow_blur;
     GLuint fwd_cached; GLint loc[40];
     GLuint fs_vao, white_tex, flat_normal_tex;
 
@@ -123,9 +131,20 @@ typedef struct {
     double step_ms;          /* cost of the last interior_bake_step */
 
     float cam_roll;          /* radians about the view axis, positive leans the head right */
-    /* A hand torch: a spot light that is not baked (no shadows; its bounce is one point light where the beam lands). */
+    /* A hand torch: a spot light with its own shadow map, redrawn every frame. Its bounce is one point light where the beam lands. */
     float flash;             /* brightness, 0 = off */
     V3 flash_pos, flash_dir; /* dir normalised */
+    V3 flash_color;
+    float flash_cone;        /* beam narrowing: 1 = as wide as authored, 1.5 = two thirds of it */
+    float flash_falloff;     /* extra fade with distance, on top of the inverse square */
+    float flash_harsh;       /* 0..1: squeeze the beam's energy into its core */
+    float flash_spec;        /* highlight strength */
+    float flash_bounce;      /* how much light comes back off what the beam lands on */
+    GLuint flash_fbo, flash_shadow, flash_cookie; /* shadow map; the beam's pattern */
+    GLuint bcap_fbo, bcap_tex, bcap_depth, bounce_fbo[2], bounce_tex[2]; int bounce_cur; /* what the beam lands on */
+    float frame_dt;          /* seconds since the last frame, for the eye adaptation; 0 = adapt at once */
+    float grain_seed;        /* changes every frame so the low light noise moves */
+    GLuint meter_fbo, meter_tex, expo_fbo[2], expo_tex[2]; int expo_cur; /* light meter, adapted exposure gain */
     float scene_light;       /* scales everything the scene's own lights contribute: 1 = on, 0 = dark. No rebake needed. */
     GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
     int out_x, out_y;        /* its lower left corner there, in pixels (an editor draws the view inside its panels) */
@@ -136,6 +155,7 @@ typedef struct {
     GLuint pre_fbo, pre_normal, pre_depth;
     GLuint ao_fbo[2], ao_tex[2];
     GLuint ldr_fbo, ldr_tex;   /* graded frame, near-field blur amount in alpha */
+    GLuint glow_fbo[2], glow_tex[2]; /* quarter resolution: bloom and the beam in the air */
     GLuint dof_fbo, dof_tex;   /* half resolution: the blurred foreground and how much of it covers each pixel */
 } IntRenderer;
 
@@ -157,6 +177,8 @@ int interior_bake_step(IntRenderer *r, const IntScene *s, const IntLook *look, d
 float interior_bake_progress(const IntRenderer *r); /* 0..1, 1 = settled */
 /* Hot reload; returns 1 if a shader that affects the bake changed (the caller should rebake). */
 int interior_reload_shaders(IntRenderer *r);
+/* Debug: the exposure gain the eye adaptation has settled on, and the metered scene luminance. */
+float interior_exposure_gain(IntRenderer *r, float *metered);
 void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 cam, V3 fwd, int w, int h, int view);
 
 #endif

@@ -8,7 +8,7 @@
 
 #define OFFICE_MAX_COLLIDERS 16
 #define OFFICE_MAX_OBJECTS 32
-#define OFFICE_OBJECT_BOXES 4
+#define OFFICE_OBJECT_BOXES 5
 #define OFFICE_NAME_LEN 32
 
 typedef struct { float x0, z0, x1, z1; } OfficeCollider; /* solid footprint on the floor */

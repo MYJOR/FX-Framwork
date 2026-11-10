@@ -24,11 +24,21 @@
 #define ENV_RES 128
 #define ENV_MAX_LOD 5.0f
 
+#define FLASH_RES 768
+#define FLASH_FOV (64.0f * PI / 180.0f) /* the shadow map and the beam pattern cover this cone */
+#define COOKIE_RES 256
+#define BOUNCE_RES 16
+#define BOUNCE_FOV (36.0f * PI / 180.0f)
+#define VIEW_BOUNCE_CAPTURE 10 /* internal debug view of the forward shader: albedo, distance in alpha */
+
+#define ADAPT_KEY 0.05f     /* scene luminance below which the eye starts to open up */
+#define ADAPT_FLOOR 0.004f  /* the meter reads black as this */
+
 #define CAM_NEAR 0.05f
 #define CAM_FAR 60.0f
 
 /* Texture units of the forward shader. */
-enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO };
+enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO, TU_FLASH_SHADOW, TU_FLASH_COOKIE, TU_FLASH_BOUNCE };
 /* Uniforms set per view or per draw, looked up once. */
 enum { U_VIEWPROJ, U_CAM, U_TINT, U_MAT, U_MAT2, U_EMISSIVE, U_CACHED };
 
@@ -58,6 +68,14 @@ IntLook interior_default_look(void) {
     l.dof_edge = 0.65f;
     l.dof_defocus = 0.0f;
     l.lens_curve = 0.035f;
+    l.adapt_max = 5.0f;
+    l.grain = 0.0f; l.grain_size = 1.0f;
+    l.grade_cast = 0.0f; l.black_crush = 0.0f;
+    l.chroma = 0.0f;
+    l.lens_dirt = 0.0f;
+    l.rough_min = 0.22f; l.rough_scale = 1.0f;
+    l.bloom = 0.06f;
+    l.air = 0.007f;
     l.msaa = 4;
     return l;
 }
@@ -159,6 +177,9 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
         glUniform1i(ul(p, "uShB"), TU_SH_B);
         glUniform1i(ul(p, "uEnvTex"), TU_ENV);
         glUniform1i(ul(p, "uAOTex"), TU_AO);
+        glUniform1i(ul(p, "uFlashShadow"), TU_FLASH_SHADOW);
+        glUniform1i(ul(p, "uFlashCookie"), TU_FLASH_COOKIE);
+        glUniform1i(ul(p, "uFlashBounceTex"), TU_FLASH_BOUNCE);
         r->fwd_cached = p;
     }
     glUniform1i(ul(p, "uPass"), pass);
@@ -210,6 +231,7 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     glUniform2f(ul(p, "uAO"), 0.0f, 0.0f);
     glUniform1f(ul(p, "uSceneLight"), 1.0f); /* the bakes always see the lights on, and no torch */
     glUniform4f(ul(p, "uFlashPos"), 0.0f, 0.0f, 0.0f, 0.0f);
+    glUniform2f(ul(p, "uGloss"), 0.22f, 1.0f); /* ... and the materials as authored */
 
     glActiveTexture(GL_TEXTURE0 + TU_SHADOW);  glBindTexture(GL_TEXTURE_2D, r->shadow_tex);
     glActiveTexture(GL_TEXTURE0 + TU_BLOCKER); glBindTexture(GL_TEXTURE_2D, r->blocker_tex);
@@ -217,12 +239,38 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     /* the reflection probe must not be bound while it is being rendered */
     glActiveTexture(GL_TEXTURE0 + TU_ENV);     glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex);
     glActiveTexture(GL_TEXTURE0 + TU_AO);      glBindTexture(GL_TEXTURE_2D, r->white_tex);
+    glActiveTexture(GL_TEXTURE0 + TU_FLASH_SHADOW); glBindTexture(GL_TEXTURE_2D, r->flash_shadow);
+    glActiveTexture(GL_TEXTURE0 + TU_FLASH_COOKIE); glBindTexture(GL_TEXTURE_2D, r->flash_cookie);
+    glActiveTexture(GL_TEXTURE0 + TU_FLASH_BOUNCE); glBindTexture(GL_TEXTURE_2D, r->white_tex);
     glActiveTexture(GL_TEXTURE0);
 }
 
 static void fwd_view(const IntRenderer *r, M4 vp, V3 cam) {
     glUniformMatrix4fv(r->loc[U_VIEWPROJ], 1, GL_FALSE, vp.m);
     glUniform3f(r->loc[U_CAM], cam.x, cam.y, cam.z);
+}
+
+/* The torch's beam as it lands on a wall, looking down the axis: hot centre, the dimmer disc the
+   reflector throws around it with its faint rings and bright rim, and none of it quite even. */
+static GLuint make_cookie(void) {
+    static float px[COOKIE_RES * COOKIE_RES];
+    for (int y = 0; y < COOKIE_RES; y++)
+        for (int x = 0; x < COOKIE_RES; x++) {
+            float u = ((float)x + 0.5f) / COOKIE_RES * 2.0f - 1.0f, v = ((float)y + 0.5f) / COOKIE_RES * 2.0f - 1.0f;
+            float a = atan2f(v, u), r = sqrtf(u * u + v * v);
+            r *= 1.0f + 0.018f * sinf(3.0f * a + 0.7f) + 0.010f * sinf(7.0f * a + 2.1f) + 0.006f * sinf(13.0f * a); /* a dented reflector */
+            float t = (r - 0.10f) / 0.40f; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+            float core = 1.0f - t * t * (3.0f - 2.0f * t);
+            t = (r - 0.76f) / 0.09f; t = t < 0 ? 0 : (t > 1 ? 1 : t);
+            float disc = 1.0f - t * t * (3.0f - 2.0f * t);
+            float rings = 0.022f * sinf(r * 31.0f) * (r > 0.3f ? 1.0f : r / 0.3f);
+            float rim = 0.09f * expf(-(r - 0.73f) * (r - 0.73f) / (0.035f * 0.035f));
+            float hole = 0.10f * expf(-r * r / (0.045f * 0.045f)); /* the bulb's own shadow */
+            float smudge = 1.0f + 0.05f * sinf(u * 9.0f + 1.3f) * sinf(v * 7.0f + 0.4f) + 0.03f * sinf(u * 23.0f - v * 17.0f);
+            float val = (core * 0.62f + disc * (0.34f + rings + rim) - hole * core) * smudge;
+            px[y * COOKIE_RES + x] = val > 0 ? val : 0;
+        }
+    return make_tex2d(GL_R16F, COOKIE_RES, COOKIE_RES, GL_RED, GL_FLOAT, px, GL_LINEAR);
 }
 
 /* ---- init --------------------------------------------------------------------------------------- */
@@ -238,6 +286,11 @@ int interior_init(IntRenderer *r) {
         !shader_program_load(&r->post, "interior_fs.vert", "interior_post.frag") ||
         !shader_program_load(&r->dof, "interior_fs.vert", "interior_dof.frag") ||
         !shader_program_load(&r->dof_mix, "interior_fs.vert", "interior_dof_mix.frag") ||
+        !shader_program_load(&r->meter, "interior_fs.vert", "interior_meter.frag") ||
+        !shader_program_load(&r->adapt, "interior_fs.vert", "interior_adapt.frag") ||
+        !shader_program_load(&r->bounce, "interior_fs.vert", "interior_bounce.frag") ||
+        !shader_program_load(&r->glow, "interior_fs.vert", "interior_glow.frag") ||
+        !shader_program_load(&r->glow_blur, "interior_fs.vert", "interior_glow_blur.frag") ||
         !shader_program_load(&r->prefilter, "interior_fs.vert", "interior_prefilter.frag"))
         return 0;
     glGenVertexArrays(1, &r->fs_vao);
@@ -252,6 +305,52 @@ int interior_init(IntRenderer *r) {
     glGenFramebuffers(2, r->ao_fbo);
     glGenFramebuffers(1, &r->ldr_fbo);
     glGenFramebuffers(1, &r->dof_fbo);
+    /* torch: shadow map and beam pattern */
+    r->flash_shadow = make_tex2d(GL_DEPTH_COMPONENT24, FLASH_RES, FLASH_RES, GL_DEPTH_COMPONENT, GL_FLOAT, NULL, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glGenFramebuffers(1, &r->flash_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, r->flash_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, r->flash_shadow, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    check_fbo("torch shadow");
+    r->flash_cookie = make_cookie();
+    /* what the torch is pointed at: a tiny view down the beam, averaged into one texel */
+    r->bcap_tex = make_tex2d(GL_RGBA16F, BOUNCE_RES, BOUNCE_RES, GL_RGBA, GL_FLOAT, NULL, GL_NEAREST);
+    r->bcap_depth = make_tex2d(GL_DEPTH_COMPONENT24, BOUNCE_RES, BOUNCE_RES, GL_DEPTH_COMPONENT, GL_FLOAT, NULL, GL_NEAREST);
+    glGenFramebuffers(1, &r->bcap_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, r->bcap_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->bcap_tex, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, r->bcap_depth, 0);
+    check_fbo("torch bounce capture");
+    glGenFramebuffers(2, r->bounce_fbo);
+    for (int i = 0; i < 2; i++) {
+        static const float grey[4] = {0.5f, 0.5f, 0.5f, 3.0f};
+        r->bounce_tex[i] = make_tex2d(GL_RGBA16F, 1, 1, GL_RGBA, GL_FLOAT, grey, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, r->bounce_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->bounce_tex[i], 0);
+        check_fbo("torch bounce");
+    }
+    glGenFramebuffers(2, r->glow_fbo);
+    /* eye adaptation: the meter, and the gain it settles on (two texels, each frame reads one and writes the other) */
+    r->meter_tex = make_tex2d(GL_RGBA16F, 8, 8, GL_RGBA, GL_FLOAT, NULL, GL_NEAREST);
+    glGenFramebuffers(1, &r->meter_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, r->meter_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->meter_tex, 0);
+    check_fbo("light meter");
+    glGenFramebuffers(2, r->expo_fbo);
+    for (int i = 0; i < 2; i++) {
+        static const float one[4] = {1.0f, 1.0f, 0.0f, 1.0f};
+        r->expo_tex[i] = make_tex2d(GL_RGBA16F, 1, 1, GL_RGBA, GL_FLOAT, one, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, r->expo_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->expo_tex[i], 0);
+        check_fbo("exposure");
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    r->scene_light = 1.0f;
+    r->flash_color = v3(1.0f, 0.96f, 0.88f);
+    r->flash_cone = 1.0f; r->flash_spec = 1.0f; r->flash_bounce = 1.0f;
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     return 1;
 }
@@ -267,6 +366,11 @@ int interior_reload_shaders(IntRenderer *r) {
     shader_reload_if_changed(&r->post);
     shader_reload_if_changed(&r->dof);
     shader_reload_if_changed(&r->dof_mix);
+    shader_reload_if_changed(&r->meter);
+    shader_reload_if_changed(&r->adapt);
+    shader_reload_if_changed(&r->bounce);
+    shader_reload_if_changed(&r->glow);
+    shader_reload_if_changed(&r->glow_blur);
     /* probes and the reflection probe are rendered with the forward shader */
     return r->fwd.id != before || r->prefilter.id != before_pf;
 }
@@ -653,8 +757,9 @@ static void ensure_targets(IntRenderer *r, int w, int h, int samples) {
     if (samples != 2 && samples != 8) samples = 4;
     if (r->w == w && r->h == h && r->samples == samples) return;
     if (r->scene_color) {
-        GLuint old[8] = {r->scene_color, r->scene_depth, r->pre_normal, r->pre_depth, r->ao_tex[0], r->ao_tex[1], r->ldr_tex, r->dof_tex};
-        glDeleteTextures(8, old);
+        GLuint old[10] = {r->scene_color, r->scene_depth, r->pre_normal, r->pre_depth, r->ao_tex[0], r->ao_tex[1], r->ldr_tex, r->dof_tex,
+                          r->glow_tex[0], r->glow_tex[1]};
+        glDeleteTextures(10, old);
     }
     r->w = w; r->h = h; r->samples = samples;
 
@@ -691,6 +796,21 @@ static void ensure_targets(IntRenderer *r, int w, int h, int samples) {
     glBindFramebuffer(GL_FRAMEBUFFER, r->dof_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->dof_tex, 0);
     check_fbo("depth of field blur");
+    for (int i = 0; i < 2; i++) {
+        r->glow_tex[i] = make_tex2d(GL_RGBA16F, (w + 3) / 4, (h + 3) / 4, GL_RGBA, GL_FLOAT, NULL, GL_LINEAR);
+        glBindFramebuffer(GL_FRAMEBUFFER, r->glow_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r->glow_tex[i], 0);
+        check_fbo("glow");
+    }
+}
+
+float interior_exposure_gain(IntRenderer *r, float *metered) {
+    float px[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+    glBindFramebuffer(GL_FRAMEBUFFER, r->expo_fbo[r->expo_cur]);
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, px);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (metered) *metered = px[1];
+    return px[0];
 }
 
 void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 cam, V3 fwd, int w, int h, int view) {
@@ -709,6 +829,45 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
 
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);
+    /* the torch's shadow map: furniture as the torch sees it */
+    M4 flash_mat = m4_identity();
+    if (r->flash > 0.0f) {
+        V3 up = fabsf(r->flash_dir.y) > 0.999f ? v3(0, 0, -1) : v3(0, 1, 0);
+        flash_mat = m4_mul(m4_perspective(FLASH_FOV, 1.0f, 0.05f, 30.0f), look_matrix(r->flash_pos, r->flash_dir, up));
+        glBindFramebuffer(GL_FRAMEBUFFER, r->flash_fbo);
+        glViewport(0, 0, FLASH_RES, FLASH_RES);
+        glEnable(GL_DEPTH_TEST);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(1.5f, 2.0f);
+        glUseProgram(r->depth.id);
+        glUniformMatrix4fv(ul(r->depth.id, "uViewProj"), 1, GL_FALSE, flash_mat.m);
+        draw_scene(r, s, 0, MAT_CASTS_SHADOW, 0);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+
+        /* what the beam lands on, for the light it throws back */
+        glBindFramebuffer(GL_FRAMEBUFFER, r->bcap_fbo);
+        glViewport(0, 0, BOUNCE_RES, BOUNCE_RES);
+        glClearColor(0.0f, 0.0f, 0.0f, 3.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        fwd_begin(r, s, look, PASS_PROBE, VIEW_BOUNCE_CAPTURE);
+        fwd_view(r, m4_mul(m4_perspective(BOUNCE_FOV, 1.0f, 0.05f, 30.0f), look_matrix(r->flash_pos, r->flash_dir, up)), r->flash_pos);
+        draw_scene(r, s, 1, 0, 1);
+        glDisable(GL_DEPTH_TEST);
+        int next = 1 - r->bounce_cur;
+        glBindFramebuffer(GL_FRAMEBUFFER, r->bounce_fbo[next]);
+        glViewport(0, 0, 1, 1);
+        glUseProgram(r->bounce.id);
+        glBindVertexArray(r->fs_vao);
+        glActiveTexture(GL_TEXTURE0 + 1); glBindTexture(GL_TEXTURE_2D, r->bounce_tex[r->bounce_cur]);
+        glActiveTexture(GL_TEXTURE0);     glBindTexture(GL_TEXTURE_2D, r->bcap_tex);
+        glUniform1i(ul(r->bounce.id, "uCapture"), 0);
+        glUniform1i(ul(r->bounce.id, "uPrev"), 1);
+        glUniform1f(ul(r->bounce.id, "uBlend"), r->frame_dt > 0.0f ? 1.0f - expf(-r->frame_dt * 10.0f) : 1.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        r->bounce_cur = next;
+        glEnable(GL_DEPTH_TEST);
+    }
     glViewport(0, 0, w, h);
 
     if (use_ao) {
@@ -755,23 +914,20 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     fwd_begin(r, s, look, PASS_FINAL, view);
     glUniform1f(ul(r->fwd.id, "uSceneLight"), r->scene_light);
+    glUniform2f(ul(r->fwd.id, "uGloss"), look->rough_min, look->rough_scale);
     if (r->flash > 0.0f) {
-        /* where the beam meets the room box: the patch it lights there is what bounces light back */
-        V3 o = r->flash_pos, d = r->flash_dir;
-        float t = 1e9f;
-        const float od[3] = {o.x, o.y, o.z}, dd[3] = {d.x, d.y, d.z};
-        const float mn[3] = {s->room_min.x, s->room_min.y, s->room_min.z}, mx[3] = {s->room_max.x, s->room_max.y, s->room_max.z};
-        for (int a = 0; a < 3; a++) {
-            if (fabsf(dd[a]) < 1e-5f) continue;
-            float ta = ((dd[a] > 0.0f ? mx[a] : mn[a]) - od[a]) / dd[a];
-            if (ta > 0.0f && ta < t) t = ta;
-        }
-        if (t > 50.0f) t = 3.0f;
-        t = t > 0.35f ? t - 0.3f : t * 0.5f;
+        V3 o = r->flash_pos;
         glUniform4f(ul(r->fwd.id, "uFlashPos"), o.x, o.y, o.z, r->flash);
-        set_v3(r->fwd.id, "uFlashDir", d);
-        glUniform4f(ul(r->fwd.id, "uFlashBounce"), o.x + d.x * t, o.y + d.y * t, o.z + d.z * t, r->flash * 0.012f);
-    }    fwd_view(r, vp, cam);
+        set_v3(r->fwd.id, "uFlashDir", r->flash_dir);
+        glUniform1f(ul(r->fwd.id, "uFlashBounce"), r->flash * 0.013f * r->flash_bounce);
+        set_v3(r->fwd.id, "uFlashColor", r->flash_color);
+        glUniform4f(ul(r->fwd.id, "uFlashShape"), r->flash_cone, r->flash_falloff, r->flash_harsh, r->flash_spec);
+        glActiveTexture(GL_TEXTURE0 + TU_FLASH_BOUNCE);
+        glBindTexture(GL_TEXTURE_2D, r->bounce_tex[r->bounce_cur]);
+        glActiveTexture(GL_TEXTURE0);
+        glUniformMatrix4fv(ul(r->fwd.id, "uFlashMat"), 1, GL_FALSE, flash_mat.m);
+    }
+    fwd_view(r, vp, cam);
     glUniform2f(ul(r->fwd.id, "uInvScreen"), 1.0f / (float)w, 1.0f / (float)h);
     if (use_ao) {
         glUniform2f(ul(r->fwd.id, "uAO"), look->ao_strength, look->ao_direct);
@@ -781,9 +937,91 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     }
     draw_scene(r, s, 1, 0, 1);
 
+    /* eye adaptation: meter the frame, move the exposure gain towards what the meter asks for */
+    int adapt = look->adapt_max > 1.0f && view == INT_VIEW_FINAL;
+    glDisable(GL_DEPTH_TEST);
+    glBindVertexArray(r->fs_vao);
+    glActiveTexture(GL_TEXTURE0);
+    if (adapt) {
+        glBindFramebuffer(GL_FRAMEBUFFER, r->meter_fbo);
+        glViewport(0, 0, 8, 8);
+        glUseProgram(r->meter.id);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_color);
+        glUniform1i(ul(r->meter.id, "uScene"), 0);
+        glUniform2f(ul(r->meter.id, "uSize"), (float)w, (float)h);
+        glUniform1f(ul(r->meter.id, "uFloor"), ADAPT_FLOOR);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        int next = 1 - r->expo_cur;
+        glBindFramebuffer(GL_FRAMEBUFFER, r->expo_fbo[next]);
+        glViewport(0, 0, 1, 1);
+        glUseProgram(r->adapt.id);
+        glBindTexture(GL_TEXTURE_2D, r->meter_tex);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        glBindTexture(GL_TEXTURE_2D, r->expo_tex[r->expo_cur]);
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(ul(r->adapt.id, "uMeter"), 0);
+        glUniform1i(ul(r->adapt.id, "uPrev"), 1);
+        glUniform4f(ul(r->adapt.id, "uAdapt"), ADAPT_KEY, look->adapt_max, r->frame_dt, 0.0f);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        r->expo_cur = next;
+        glViewport(0, 0, w, h);
+    }
+
+    /* glow: bloom and the torch beam in the air, at quarter resolution, blurred twice */
+    int glow = view == INT_VIEW_FINAL && (look->bloom > 0.0f || look->lens_dirt > 0.0f || (look->air > 0.0f && r->flash > 0.0f));
+    if (glow) {
+        int gw = (w + 3) / 4, gh = (h + 3) / 4;
+        V3 right = v3(view_m.m[0], view_m.m[4], view_m.m[8]), upv = v3(view_m.m[1], view_m.m[5], view_m.m[9]);
+        V3 ahead = v3(-view_m.m[2], -view_m.m[6], -view_m.m[10]);
+        GLuint g = r->glow.id;
+        glBindFramebuffer(GL_FRAMEBUFFER, r->glow_fbo[0]);
+        glViewport(0, 0, gw, gh);
+        glUseProgram(g);
+        glActiveTexture(GL_TEXTURE0);     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_color);
+        glActiveTexture(GL_TEXTURE0 + 1); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_depth);
+        glActiveTexture(GL_TEXTURE0 + 2); glBindTexture(GL_TEXTURE_2D, adapt ? r->expo_tex[r->expo_cur] : r->white_tex);
+        glActiveTexture(GL_TEXTURE0 + 3); glBindTexture(GL_TEXTURE_2D, r->flash_shadow);
+        glActiveTexture(GL_TEXTURE0 + 4); glBindTexture(GL_TEXTURE_2D, r->flash_cookie);
+        glUniform1i(ul(g, "uScene"), 0);
+        glUniform1i(ul(g, "uSceneDepth"), 1);
+        glUniform1i(ul(g, "uExposureTex"), 2);
+        glUniform1i(ul(g, "uFlashShadow"), 3);
+        glUniform1i(ul(g, "uFlashCookie"), 4);
+        glUniform2f(ul(g, "uSize"), (float)w, (float)h);
+        glUniform4f(ul(g, "uGlow"), look->exposure, look->bloom, look->air, r->grain_seed);
+        glUniform4f(ul(g, "uProj"), tan_half * aspect, tan_half, CAM_NEAR, CAM_FAR);
+        set_v3(g, "uCam", cam);
+        set_v3(g, "uRight", right);
+        set_v3(g, "uUp", upv);
+        set_v3(g, "uFwd", ahead);
+        glUniform4f(ul(g, "uFlashPos"), r->flash_pos.x, r->flash_pos.y, r->flash_pos.z, r->flash);
+        glUniformMatrix4fv(ul(g, "uFlashMat"), 1, GL_FALSE, flash_mat.m);
+        set_v3(g, "uFlashColor", r->flash_color);
+        glUniform4f(ul(g, "uFlashShape"), r->flash_cone, r->flash_falloff, r->flash_harsh, r->flash_spec);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0 + 1); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+        glActiveTexture(GL_TEXTURE0);     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+
+        g = r->glow_blur.id;
+        glUseProgram(g);
+        glUniform1i(ul(g, "uTex"), 0);
+        static const float spread[2] = {1.0f, 2.6f}; /* tap spacing in texels: a tight pass, then a wide one */
+        for (int i = 0; i < 4; i++) {
+            glBindFramebuffer(GL_FRAMEBUFFER, r->glow_fbo[1 - (i & 1)]);
+            glBindTexture(GL_TEXTURE_2D, r->glow_tex[i & 1]);
+            if (i & 1) glUniform2f(ul(g, "uStep"), 0.0f, spread[i / 2] / (float)gh);
+            else glUniform2f(ul(g, "uStep"), spread[i / 2] / (float)gw, 0.0f);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        glViewport(0, 0, w, h);
+    }
+
     /* resolve, tonemap and grade: to the window, or to a texture when the near field gets blurred after */
     int dof = look->dof_strength > 0.0f && view == INT_VIEW_FINAL && look->dof_start > look->dof_full && look->dof_full > 0.0f;
-    int lens = look->lens_curve > 0.0f && view == INT_VIEW_FINAL;
+    int fx = view == INT_VIEW_FINAL && (look->chroma > 0.0f || (look->lens_dirt > 0.0f && glow));
+    int lens = (look->lens_curve > 0.0f && view == INT_VIEW_FINAL) || fx; /* the last pass also does fringing and lens dirt */
     glBindFramebuffer(GL_FRAMEBUFFER, (dof || lens) ? r->ldr_fbo : r->out_fbo);
     if (!(dof || lens)) glViewport(r->out_x, r->out_y, w, h);
     glDisable(GL_DEPTH_TEST);
@@ -801,6 +1039,16 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     glActiveTexture(GL_TEXTURE0 + 1);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, r->scene_depth);
     glUniform1i(ul(p, "uSceneDepth"), 1);
+    glActiveTexture(GL_TEXTURE0 + 2);
+    glBindTexture(GL_TEXTURE_2D, adapt ? r->expo_tex[r->expo_cur] : r->white_tex);
+    glUniform1i(ul(p, "uExposureTex"), 2);
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_2D, glow ? r->glow_tex[0] : r->white_tex);
+    glUniform1i(ul(p, "uGlowTex"), 3);
+    glUniform3f(ul(p, "uGlowInfo"), 1.0f / (float)w, 1.0f / (float)h, glow ? 1.0f : 0.0f);
+    glUniform4f(ul(p, "uFilm"), look->grain, look->grain_size, look->grade_cast, look->black_crush);
+    glUniform2f(ul(p, "uNight"), look->adapt_max, r->grain_seed);
+    glActiveTexture(GL_TEXTURE0 + 1);
     /* blur grows with 1/distance, like a lens focused far away: 0 at dof_start, 1 at dof_full */
     if (dof) glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 1.0f / look->dof_start, 1.0f / (1.0f / look->dof_full - 1.0f / look->dof_start));
     else glUniform4f(ul(p, "uDof"), CAM_NEAR, CAM_FAR, 0.0f, 0.0f);
@@ -837,7 +1085,12 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
         glUniform1i(ul(p, "uSharp"), 0);
         glUniform1i(ul(p, "uNear"), 1);
         glUniform1i(ul(p, "uUseNear"), dof);
-        glUniform2f(ul(p, "uLens"), lens ? look->lens_curve : 0.0f, aspect);
+        glUniform2f(ul(p, "uLens"), look->lens_curve > 0.0f ? look->lens_curve : 0.0f, aspect);
+        glActiveTexture(GL_TEXTURE0 + 2);
+        glBindTexture(GL_TEXTURE_2D, glow ? r->glow_tex[0] : r->white_tex);
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(ul(p, "uGlowTex"), 2);
+        glUniform2f(ul(p, "uFx"), fx ? look->chroma : 0.0f, fx && glow ? look->lens_dirt : 0.0f);
         glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 }
