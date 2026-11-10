@@ -123,6 +123,10 @@ typedef struct {
     double step_ms;          /* cost of the last interior_bake_step */
 
     float cam_roll;          /* radians about the view axis, positive leans the head right */
+    /* A hand torch: a spot light that is not baked (no shadows; its bounce is one point light where the beam lands). */
+    float flash;             /* brightness, 0 = off */
+    V3 flash_pos, flash_dir; /* dir normalised */
+    float scene_light;       /* scales everything the scene's own lights contribute: 1 = on, 0 = dark. No rebake needed. */
     GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
     int out_x, out_y;        /* its lower left corner there, in pixels (an editor draws the view inside its panels) */
 

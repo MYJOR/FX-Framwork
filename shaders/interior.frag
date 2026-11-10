@@ -59,6 +59,12 @@ uniform vec3 uProxyMin[MAX_PROXIES];
 uniform vec3 uProxyMax[MAX_PROXIES];
 uniform vec3 uProxyAlbedo;
 
+// ---- hand torch and the master switch for the room's own lights (final pass only) ----
+uniform float uSceneLight;   // 1 = lights on, 0 = dark
+uniform vec4 uFlashPos;      // xyz, brightness (0 = off)
+uniform vec3 uFlashDir;
+uniform vec4 uFlashBounce;   // where the beam lands, strength of the light that comes back from there
+const vec3 FLASH_COLOR = vec3(1.0, 0.96, 0.88);
 // Irradiance / pi arriving at P for a surface facing N.
 vec3 irradiance(vec3 P, vec3 N) {
     vec3 uvw = (P - uProbeOrigin) * uProbeInvExtent;
@@ -220,8 +226,38 @@ void main() {
         shadowAll += ff * s;
         weightAll += ff;
     }
+    direct *= uSceneLight;
+    vec3 indirect = irradiance(vWorld + Ng * 0.15, N) * uSceneLight;
+
+    vec3 flashSpec = vec3(0.0);
+    if (uFlashPos.w > 0.0) {
+        vec3 Lv = uFlashPos.xyz - vWorld;
+        float d2 = dot(Lv, Lv);
+        vec3 L = Lv * inversesqrt(d2);
+        float c = dot(-L, uFlashDir);
+        // a bright core, a dimmer ring around it from the reflector, and a little spill
+        float beam = smoothstep(0.955, 0.992, c) * 0.62 + smoothstep(0.885, 0.93, c) * 0.34 + smoothstep(0.5, 0.9, c) * 0.04;
+        float NoL = max(dot(N, L), 0.0);
+        vec3 E = FLASH_COLOR * (uFlashPos.w * beam * NoL / (d2 + 0.25));
+        direct += E;
+        if (E != vec3(0.0)) { // GGX highlight
+            vec3 H = normalize(L + V);
+            float a = rough * rough, a2 = a * a;
+            float NoH = max(dot(N, H), 0.0), VoH = max(dot(V, H), 0.0);
+            float dn = NoH * NoH * (a2 - 1.0) + 1.0;
+            float D = a2 / (dn * dn);
+            float k = a * 0.5;
+            float vis = 0.25 / ((NoL * (1.0 - k) + k) * (NoV * (1.0 - k) + k) + 1e-4);
+            vec3 F = F0 + (1.0 - F0) * pow(1.0 - VoH, 5.0);
+            flashSpec = E * D * vis * F * uEnv.y;
+        }
+        // one bounce, as a soft point light sitting where the beam lands
+        vec3 Bv = uFlashBounce.xyz - vWorld;
+        float b2 = dot(Bv, Bv);
+        indirect += FLASH_COLOR * (uFlashBounce.w * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
+    }
     direct *= mix(1.0, ao, uAO.y);
-    vec3 indirect = irradiance(vWorld + Ng * 0.15, N) * ao;
+    indirect *= ao;
 
     vec3 col = diffuseColor * (direct + indirect);
 
@@ -230,12 +266,12 @@ void main() {
         vec3 R = reflect(-V, N);
         R = normalize(R + Ng * max(0.02 - dot(R, Ng), 0.0)); // keep it above the surface
         float specOcclusion = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
-        spec = reflection(vWorld + Ng * 0.01, R, rough) * envBRDF(F0, rough, NoV) * specOcclusion * uEnv.y;
+        spec = reflection(vWorld + Ng * 0.01, R, rough) * envBRDF(F0, rough, NoV) * specOcclusion * uEnv.y * uSceneLight + flashSpec;
         col += spec;
     }
 
     // light diffusers. Black for the irradiance probes: their light is already the analytic direct term.
-    if (uEmissive != vec3(0.0)) col = uPass == PASS_PROBE ? vec3(0.0) : uEmissive;
+    if (uEmissive != vec3(0.0)) col = uPass == PASS_PROBE ? vec3(0.0) : mix(vec3(0.7) * (direct + indirect), uEmissive, uSceneLight); // switched off: a milky sheet of plastic
 
     if (uDebugView == 1) col = albedo;
     else if (uDebugView == 2) col = N * 0.5 + 0.5;

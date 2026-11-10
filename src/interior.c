@@ -208,6 +208,8 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     }
     set_v3(p, "uProxyAlbedo", s->proxy_albedo);
     glUniform2f(ul(p, "uAO"), 0.0f, 0.0f);
+    glUniform1f(ul(p, "uSceneLight"), 1.0f); /* the bakes always see the lights on, and no torch */
+    glUniform4f(ul(p, "uFlashPos"), 0.0f, 0.0f, 0.0f, 0.0f);
 
     glActiveTexture(GL_TEXTURE0 + TU_SHADOW);  glBindTexture(GL_TEXTURE_2D, r->shadow_tex);
     glActiveTexture(GL_TEXTURE0 + TU_BLOCKER); glBindTexture(GL_TEXTURE_2D, r->blocker_tex);
@@ -752,7 +754,24 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     fwd_begin(r, s, look, PASS_FINAL, view);
-    fwd_view(r, vp, cam);
+    glUniform1f(ul(r->fwd.id, "uSceneLight"), r->scene_light);
+    if (r->flash > 0.0f) {
+        /* where the beam meets the room box: the patch it lights there is what bounces light back */
+        V3 o = r->flash_pos, d = r->flash_dir;
+        float t = 1e9f;
+        const float od[3] = {o.x, o.y, o.z}, dd[3] = {d.x, d.y, d.z};
+        const float mn[3] = {s->room_min.x, s->room_min.y, s->room_min.z}, mx[3] = {s->room_max.x, s->room_max.y, s->room_max.z};
+        for (int a = 0; a < 3; a++) {
+            if (fabsf(dd[a]) < 1e-5f) continue;
+            float ta = ((dd[a] > 0.0f ? mx[a] : mn[a]) - od[a]) / dd[a];
+            if (ta > 0.0f && ta < t) t = ta;
+        }
+        if (t > 50.0f) t = 3.0f;
+        t = t > 0.35f ? t - 0.3f : t * 0.5f;
+        glUniform4f(ul(r->fwd.id, "uFlashPos"), o.x, o.y, o.z, r->flash);
+        set_v3(r->fwd.id, "uFlashDir", d);
+        glUniform4f(ul(r->fwd.id, "uFlashBounce"), o.x + d.x * t, o.y + d.y * t, o.z + d.z * t, r->flash * 0.012f);
+    }    fwd_view(r, vp, cam);
     glUniform2f(ul(r->fwd.id, "uInvScreen"), 1.0f / (float)w, 1.0f / (float)h);
     if (use_ao) {
         glUniform2f(ul(r->fwd.id, "uAO"), look->ao_strength, look->ao_direct);

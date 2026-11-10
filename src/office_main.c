@@ -18,7 +18,7 @@
  *   Y    scene editor: frees the cursor and opens the panel (src/office_editor.c). Objects are
  *        moved in the view and the lighting is rebaked as they move. Hold the right mouse button
  *        to look around while editing.
- *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F5 vsync
+ *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L room lights   F5 vsync
  *   - / = exposure                  Esc quit (in the editor: deselect, then back to playing)
  *   gamepad: left stick move, right stick look, RT run, B crouch
  */
@@ -34,6 +34,7 @@
 #define RUN_SPEED 3.9f
 #define CROUCH_SPEED 1.1f
 #define TILT_RATE 3.5f /* 1/s: how quickly the camera tilt follows the movement; lower = lazier */
+#define FLASH_POWER 16.0f /* torch brightness */
 #define ZOOM_FACTOR 2.2f /* magnification while the right mouse button is held */
 #define ZOOM_RATE 10.0f  /* 1/s: how quickly the zoom eases in and out */
 #define FOCUS_RATE 4.0f  /* 1/s: how quickly the lens finds focus again after the zoom changed */
@@ -148,6 +149,8 @@ int main(int argc, char **argv) {
     float arg_x = 0, arg_z = 0, arg_yaw = 0, arg_pitch = -0.06f, arg_eye = 0, arg_roll = 0;
     IntLook look = interior_default_look();
     float lens_curve = look.lens_curve;
+    int flash_on = 0, lights_on = 1; /* F: hand torch, L: the room's lights */
+    float flash_level = 0.0f, light_level = 1.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
     int arg_zoom = 0, default_scene = 0;
     const char *cmds[16]; int cmd_count = 0; /* editor commands to run, one every other frame */
     float focus = 0.0f; /* the zoom the lens is focused for; trails behind zoom */
@@ -191,6 +194,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--nolens")) lens_curve = 0.0f;
         else if (!strcmp(argv[i], "--default-scene")) default_scene = 1; /* ignore the saved scene file */
         else if (!strcmp(argv[i], "--cmd") && i + 1 < argc) { if (cmd_count < 16) cmds[cmd_count++] = argv[++i]; else i++; } /* test: an editor command */
+        else if (!strcmp(argv[i], "--flash")) flash_on = 1;
+        else if (!strcmp(argv[i], "--lights-off")) { lights_on = 0; light_level = 0.0f; }
         else if (!strcmp(argv[i], "--zoom")) arg_zoom = 1; /* test: as if the right mouse button were held */
         else if (!strcmp(argv[i], "--bench")) bench = 1; /* uncapped, prints frame times, exits */
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
@@ -357,6 +362,8 @@ int main(int argc, char **argv) {
         if (PRESSED(VK_F2)) ed.ao = !ed.ao;
         if (PRESSED(VK_F3)) ed.reflections = !ed.reflections;
         if (PRESSED(VK_F4)) ed.dof = !ed.dof;
+        if (PRESSED('F') && !ed.active && !typing) flash_on = !flash_on;          /* in the editor F frames the selection */
+        if (PRESSED('L') && !typing && !ctrl) lights_on = !lights_on;
         if (PRESSED(VK_F5)) { ed.vsync = !ed.vsync; platform_set_vsync(ed.vsync); }
         if (!typing) {
             if (plat.keys[VK_OEM_MINUS]) look.exposure *= expf(-0.8f * dt);
@@ -452,6 +459,19 @@ int main(int argc, char **argv) {
         player.tilt += (tilt - player.tilt) * (1.0f - expf(-TILT_RATE * dt));
         renderer.cam_roll = ed.active ? 0.0f : player.tilt + arg_roll;
         V3 eye = player_eye(&player, ed.active ? 0.0f : 1.0f), fwd = cam_forward(player.yaw, player.pitch);
+        /* Room lights fade like a tube dying, the torch snaps on. The torch is held low on the right and
+           trails the view a little, so the beam swings after the head instead of being glued to the screen. */
+        light_level += ((lights_on ? 1.0f : 0.0f) - light_level) * (1.0f - expf(-dt * (lights_on ? 9.0f : 14.0f)));
+        flash_level += ((flash_on && !ed.active ? 1.0f : 0.0f) - flash_level) * (1.0f - expf(-dt * 30.0f));
+        {
+            float k = shot ? 1.0f : 1.0f - expf(-dt * 12.0f);
+            flash_dir = v3_norm(v3_add(flash_dir, v3_scale(v3_add(fwd, v3_scale(flash_dir, -1.0f)), k)));
+            V3 right = v3_norm(v3_cross(fwd, v3(0.0f, 1.0f, 0.0f)));
+            renderer.flash = flash_level < 0.01f ? 0.0f : flash_level * FLASH_POWER;
+            renderer.flash_dir = flash_dir;
+            renderer.flash_pos = v3_add(eye, v3_add(v3_scale(right, 0.16f), v3(0.0f, -0.20f, 0.0f)));
+            renderer.scene_light = light_level < 0.002f ? 0.0f : light_level;
+        }
         int view_rect[4]; /* the whole window while playing, the space between the panels while editing */
         editor_view_rect(&ed, plat.width, plat.height, view_rect);
         renderer.out_x = view_rect[0];
