@@ -38,7 +38,7 @@
 #define CAM_FAR 60.0f
 
 /* Texture units of the forward shader. */
-enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO, TU_FLASH_SHADOW, TU_FLASH_COOKIE, TU_FLASH_BOUNCE, TU_ENV1 };
+enum { TU_ALBEDO, TU_NORMAL, TU_ORM, TU_SHADOW, TU_BLOCKER, TU_SH_R, TU_SH_G, TU_SH_B, TU_ENV, TU_AO, TU_FLASH_SHADOW, TU_FLASH_COOKIE, TU_FLASH_BOUNCE, TU_ENV1, TU_ENV2 };
 /* Uniforms set per view or per draw, looked up once. */
 enum { U_VIEWPROJ, U_CAM, U_TINT, U_MAT, U_MAT2, U_EMISSIVE, U_CACHED };
 
@@ -140,6 +140,7 @@ static void draw_scene(const IntRenderer *r, const IntScene *s, int materials, u
         const IntDraw *d = &s->draws[i];
         const IntMaterial *m = &s->mats[d->material];
         if ((m->flags & require) != require) continue;
+        if ((m->flags & MAT_DECAL) && !(require & MAT_DECAL)) continue; /* decals only when asked for */
         if (cull && !(m->flags & MAT_TWO_SIDED)) glEnable(GL_CULL_FACE);
         else glDisable(GL_CULL_FACE);
         if (materials) {
@@ -150,7 +151,7 @@ static void draw_scene(const IntRenderer *r, const IntScene *s, int materials, u
             glActiveTexture(GL_TEXTURE0 + TU_ORM);
             glBindTexture(GL_TEXTURE_2D, m->orm ? m->orm : r->white_tex);
             glUniform4f(r->loc[U_TINT], m->tint[0], m->tint[1], m->tint[2], m->desaturate);
-            glUniform4f(r->loc[U_MAT], m->roughness, m->metallic, 0.0f, m->normal ? m->normal_strength : 0.0f);
+            glUniform4f(r->loc[U_MAT], m->roughness, m->metallic, (m->flags & MAT_DECAL) ? 1.0f : 0.0f, m->normal ? m->normal_strength : 0.0f);
             glUniform3f(r->loc[U_EMISSIVE], m->emissive[0], m->emissive[1], m->emissive[2]);
             glUniform4f(r->loc[U_MAT2], m->rough_variation, m->orm ? 1.0f : 0.0f,
                         (m->flags & MAT_TWO_SIDED) ? 1.0f : 0.0f, m->specular);
@@ -161,10 +162,16 @@ static void draw_scene(const IntRenderer *r, const IntScene *s, int materials, u
 }
 
 static void set_portal(GLuint p, const IntScene *s) {
-    glUniform4f(ul(p, "uPortal"), s->portal.x0, s->portal.x1, s->portal.z, s->portal.half_w);
-    glUniform1f(ul(p, "uPortalSpring"), s->portal.spring);
+    float wall[INT_MAX_PORTALS * 4] = {0}, arch[INT_MAX_PORTALS * 4] = {0};
+    for (int k = 0; k < s->portal_count; k++) {
+        const IntPortal *d = &s->portals[k];
+        wall[k * 4] = d->x0; wall[k * 4 + 1] = d->x1; wall[k * 4 + 2] = d->z; wall[k * 4 + 3] = d->half_w;
+        arch[k * 4] = d->spring;
+    }
+    glUniform4fv(ul(p, "uPortal"), INT_MAX_PORTALS, wall);
+    glUniform4fv(ul(p, "uPortalArch"), INT_MAX_PORTALS, arch);
+    glUniform1i(ul(p, "uPortalCount"), s->portal_count);
 }
-
 /* Binds the forward program with everything that does not change between views. */
 static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, int pass, int view) {
     GLuint p = r->fwd.id;
@@ -182,6 +189,7 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
         glUniform1i(ul(p, "uShB"), TU_SH_B);
         glUniform1i(ul(p, "uEnvTex"), TU_ENV);
         glUniform1i(ul(p, "uEnvTex1"), TU_ENV1);
+        glUniform1i(ul(p, "uEnvTex2"), TU_ENV2);
         glUniform1i(ul(p, "uAOTex"), TU_AO);
         glUniform1i(ul(p, "uFlashShadow"), TU_FLASH_SHADOW);
         glUniform1i(ul(p, "uFlashCookie"), TU_FLASH_COOKIE);
@@ -232,32 +240,49 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
         glUniform1i(ul(p, "uEnvCount"), ne);
     }
     set_portal(p, s);
-    if (s->portal.x1 > s->portal.x0) {
-        /* Probes inside the wall hold nothing. Tell the shader which probe planes are the last in open
-           air on either side of it, and which lie inside the doorway. */
-        const IntPortal *d = &s->portal;
+    if (s->portal_count > 0) {
+        /* Probes inside the walls hold nothing. Tell the shader which probe planes stand in open air
+           in each room, and which lie inside each doorway. */
         const float m = 0.05f;
-        float xa = s->room_min.x, xb = s->room_max.x, zlo = d->z, zhi = d->z, ytop = 0.0f;
-        int have_a = 0, have_b = 0, have_z = 0;
-        for (int i = 0; i < r->probe_n[0]; i++) {
-            float x = r->probe_origin.x + ((float)i + 0.5f) * r->probe_extent.x / (float)r->probe_n[0];
-            if (x <= d->x0 - m) { xa = x; have_a = 1; }
-            if (x >= d->x1 + m && !have_b) { xb = x; have_b = 1; }
+        float rmin[INT_MAX_ENVS * 3], rmax[INT_MAX_ENVS * 3];
+        for (int e = 0; e < INT_MAX_ENVS; e++) { /* each room: the probe planes that stand inside it */
+            const IntEnv *env = &s->envs[e < s->env_count ? e : 0];
+            const float bmin[3] = {env->box_min.x, env->box_min.y, env->box_min.z}, bmax[3] = {env->box_max.x, env->box_max.y, env->box_max.z};
+            const float org[3] = {r->probe_origin.x, r->probe_origin.y, r->probe_origin.z}, ext[3] = {r->probe_extent.x, r->probe_extent.y, r->probe_extent.z};
+            for (int a = 0; a < 3; a++) {
+                float lo = (bmin[a] + bmax[a]) * 0.5f, hi = lo;
+                int have = 0;
+                for (int i = 0; i < r->probe_n[a]; i++) {
+                    float v = org[a] + ((float)i + 0.5f) * ext[a] / (float)r->probe_n[a];
+                    if (v < bmin[a] + m || v > bmax[a] - m) continue;
+                    if (!have) lo = v;
+                    hi = v; have = 1;
+                }
+                rmin[e * 3 + a] = lo; rmax[e * 3 + a] = hi;
+            }
         }
-        for (int i = 0; i < r->probe_n[2]; i++) {
-            float z = r->probe_origin.z + ((float)i + 0.5f) * r->probe_extent.z / (float)r->probe_n[2];
-            if (z < d->z - d->half_w + m || z > d->z + d->half_w - m) continue;
-            if (!have_z) zlo = z;
-            zhi = z; have_z = 1;
+        glUniform3fv(ul(p, "uProbeRoomMin"), INT_MAX_ENVS, rmin);
+        glUniform3fv(ul(p, "uProbeRoomMax"), INT_MAX_ENVS, rmax);
+        float door[INT_MAX_PORTALS * 4] = {0};
+        for (int k = 0; k < s->portal_count; k++) {
+            const IntPortal *d = &s->portals[k];
+            float zlo = d->z, zhi = d->z, ytop = 0.0f;
+            int have_z = 0;
+            for (int i = 0; i < r->probe_n[2]; i++) {
+                float z = r->probe_origin.z + ((float)i + 0.5f) * r->probe_extent.z / (float)r->probe_n[2];
+                if (z < d->z - d->half_w + m || z > d->z + d->half_w - m) continue;
+                if (!have_z) zlo = z;
+                zhi = z; have_z = 1;
+            }
+            float off = fabsf(zlo - d->z) > fabsf(zhi - d->z) ? fabsf(zlo - d->z) : fabsf(zhi - d->z);
+            float head = d->spring + sqrtf(d->half_w * d->half_w > off * off ? d->half_w * d->half_w - off * off : 0.0f) - m;
+            for (int i = 0; i < r->probe_n[1]; i++) {
+                float y = r->probe_origin.y + ((float)i + 0.5f) * r->probe_extent.y / (float)r->probe_n[1];
+                if (y <= head || i == 0) ytop = y;
+            }
+            door[k * 4] = zlo; door[k * 4 + 1] = zhi; door[k * 4 + 2] = ytop;
         }
-        float off = fabsf(zlo - d->z) > fabsf(zhi - d->z) ? fabsf(zlo - d->z) : fabsf(zhi - d->z);
-        float head = d->spring + sqrtf(d->half_w * d->half_w > off * off ? d->half_w * d->half_w - off * off : 0.0f) - m;
-        for (int i = 0; i < r->probe_n[1]; i++) {
-            float y = r->probe_origin.y + ((float)i + 0.5f) * r->probe_extent.y / (float)r->probe_n[1];
-            if (y <= head || i == 0) ytop = y;
-        }
-        glUniform4f(ul(p, "uProbeClamp"), xa, xb, zlo, zhi);
-        glUniform1f(ul(p, "uProbeClampY"), ytop);
+        glUniform4fv(ul(p, "uProbeDoor"), INT_MAX_PORTALS, door);
     }
     glUniform2f(ul(p, "uEnv"), ENV_MAX_LOD, look->reflection);
     glUniform1i(ul(p, "uProxyCount"), s->proxy_count);
@@ -282,6 +307,7 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     /* the reflection probe must not be bound while it is being rendered */
     glActiveTexture(GL_TEXTURE0 + TU_ENV);     glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex[0]);
     glActiveTexture(GL_TEXTURE0 + TU_ENV1);    glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex[s->env_count > 1 ? 1 : 0]);
+    glActiveTexture(GL_TEXTURE0 + TU_ENV2);    glBindTexture(GL_TEXTURE_CUBE_MAP, pass == PASS_ENV ? 0 : r->env_tex[s->env_count > 2 ? 2 : 0]);
     glActiveTexture(GL_TEXTURE0 + TU_AO);      glBindTexture(GL_TEXTURE_2D, r->white_tex);
     glActiveTexture(GL_TEXTURE0 + TU_FLASH_SHADOW); glBindTexture(GL_TEXTURE_2D, r->flash_shadow);
     glActiveTexture(GL_TEXTURE0 + TU_FLASH_COOKIE); glBindTexture(GL_TEXTURE_2D, r->flash_cookie);
@@ -564,7 +590,21 @@ static void probes_setup(IntRenderer *r, const IntScene *s) {
     }
     r->probe_origin = s->room_min;
     r->probe_extent = size;
-    if (r->probe_dir && n[0] == r->probe_n[0] && n[1] == r->probe_n[1] && n[2] == r->probe_n[2]) return;
+    int same = r->probe_dir && n[0] == r->probe_n[0] && n[1] == r->probe_n[1] && n[2] == r->probe_n[2];
+    if (!same) r->probe_alive = (unsigned char *)realloc(r->probe_alive, (size_t)n[0] * n[1] * n[2]);
+    /* With several rooms the grid also covers the walls between them and whatever lies outside them all:
+       those probes see nothing and are skipped. */
+    for (int iz = 0; iz < n[2]; iz++)
+        for (int ix = 0; ix < n[0]; ix++) {
+            float x = s->room_min.x + ((float)ix + 0.5f) * size.x / (float)n[0], z = s->room_min.z + ((float)iz + 0.5f) * size.z / (float)n[2];
+            int alive = s->portal_count < 1 || s->env_count < 1;
+            for (int e = 0; e < s->env_count && !alive; e++)
+                alive = x > s->envs[e].box_min.x && x < s->envs[e].box_max.x && z > s->envs[e].box_min.z && z < s->envs[e].box_max.z;
+            for (int k = 0; k < s->portal_count && !alive; k++) /* in a doorway */
+                alive = x >= s->portals[k].x0 - 0.01f && x <= s->portals[k].x1 + 0.01f && fabsf(z - s->portals[k].z) < s->portals[k].half_w;
+            for (int iy = 0; iy < n[1]; iy++) r->probe_alive[(iz * n[1] + iy) * n[0] + ix] = (unsigned char)alive;
+        }
+    if (same) return;
     memcpy(r->probe_n, n, sizeof n);
     int count = n[0] * n[1] * n[2];
 
@@ -668,9 +708,10 @@ static void bake_probes(IntRenderer *r, const IntScene *s, const IntLook *look) 
     int count = r->probe_n[0] * r->probe_n[1] * r->probe_n[2];
     for (int c = 0; c < 3; c++) memset(r->sh_cpu[c], 0, (size_t)count * 4 * sizeof(float));
     upload_sh(r); /* bounce 0 sees no indirect light */
-    for (int i = 0; i < count; i++) r->probe_ids[i] = i;
+    int live = 0;
+    for (int i = 0; i < count; i++) if (r->probe_alive[i]) r->probe_ids[live++] = i;
     for (int bounce = 0; bounce < PROBE_BOUNCES; bounce++) {
-        probes_capture(r, s, look, r->probe_ids, count);
+        probes_capture(r, s, look, r->probe_ids, live);
         upload_sh(r);
     }
 }
@@ -782,9 +823,12 @@ int interior_bake_step(IntRenderer *r, const IntScene *s, const IntLook *look, d
     int count = r->probe_n[0] * r->probe_n[1] * r->probe_n[2], captured = 0;
     while (r->probes_pending > 0) {
         int n = r->probes_pending < PROBE_ROW ? r->probes_pending : PROBE_ROW;
-        for (int i = 0; i < n; i++)
-            r->probe_ids[i] = (int)(((long long)(r->probe_cursor + i) * r->probe_stride) % count);
-        probes_capture(r, s, look, r->probe_ids, n);
+        int live = 0;
+        for (int i = 0; i < n; i++) {
+            int id = (int)(((long long)(r->probe_cursor + i) * r->probe_stride) % count);
+            if (r->probe_alive[id]) r->probe_ids[live++] = id;
+        }
+        if (live) probes_capture(r, s, look, r->probe_ids, live);
         int before = r->probe_cursor / count;
         r->probe_cursor += n;
         r->probes_pending -= n;
@@ -987,6 +1031,17 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
         glActiveTexture(GL_TEXTURE0);
     }
     draw_scene(r, s, 1, 0, 1);
+
+    /* stains: multiplied over the lit surfaces they lie on */
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.0f, -1.0f);
+    draw_scene(r, s, 1, MAT_DECAL, 1);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
 
     /* eye adaptation: meter the frame, move the exposure gain towards what the meter asks for */
     int adapt = look->adapt_max > 1.0f && view == INT_VIEW_FINAL;

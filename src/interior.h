@@ -17,16 +17,19 @@
  * incrementally by interior_bake_step() while the scene is edited. A frame is a depth/normal
  * prepass, AO, one forward pass and the resolve. */
 
-#define INT_MAX_LIGHTS 4
-#define INT_MAX_MATERIALS 16
+#define INT_MAX_LIGHTS 8
+#define INT_MAX_MATERIALS 24
 #define INT_MAX_DRAWS 32
 #define INT_MAX_PROXIES 8
-#define INT_MAX_ENVS 2
+#define INT_MAX_ENVS 3
+#define INT_MAX_PORTALS 2
 
 enum {
     MAT_TWO_SIDED = 1,    /* no backface culling, normal flipped on back faces */
     MAT_CASTS_SHADOW = 2, /* rendered into the shadow maps (furniture; the room shell only receives) */
-    MAT_SHELL = 4         /* part of the room box: the only geometry the reflection probe captures */
+    MAT_SHELL = 4,        /* part of the room box: the only geometry the reflection probe captures */
+    MAT_DECAL = 8         /* geometry laid just over a surface, drawn in the final image only. Its albedo texture
+                             stains what is behind it (multiplied; white = untouched), its normal map dents it. */
 };
 
 typedef struct {
@@ -57,10 +60,10 @@ typedef struct { V3 min, max; } IntProxy;
 /* A reflection probe: captured at pos, box-projected onto the room it stands in. */
 typedef struct { V3 pos, box_min, box_max; } IntEnv;
 
-/* The level may be two rooms side by side, parted by a wall across the X axis with one arched
-   doorway in it. Light crosses from one room to the other only through that opening. */
+/* The level may be several rooms in a row along the X axis, each parted from the next by a wall
+   across X with one arched doorway in it. Light crosses between rooms only through those openings. */
 typedef struct {
-    float x0, x1;   /* the wall's two faces; x1 <= x0: there is no wall, the level is one room */
+    float x0, x1;   /* the wall's two faces */
     float z;        /* centre of the doorway */
     float half_w;   /* half its width, and the radius of the arch */
     float spring;   /* height where the straight sides end and the arch begins */
@@ -75,8 +78,8 @@ typedef struct {
     IntProxy proxies[INT_MAX_PROXIES];   int proxy_count;
     V3 proxy_albedo;
     V3 room_min, room_max; /* bounds of the whole level: the irradiance probes fill this box */
-    IntEnv envs[INT_MAX_ENVS]; int env_count; /* envs[0]: the room below portal.x0, envs[1]: the one beyond portal.x1 */
-    IntPortal portal;
+    IntEnv envs[INT_MAX_ENVS]; int env_count; /* one per room, in order along x: portal_count + 1 of them */
+    IntPortal portals[INT_MAX_PORTALS]; int portal_count; /* portals[i] parts envs[i] from envs[i + 1]; 0: one room */
 } IntScene;
 
 /* The look. Everything a lighting artist would tune lives here. */
@@ -138,6 +141,7 @@ typedef struct {
     float *sh_cpu[3];        /* the probes' SH, as uploaded to sh_tex */
     float (*probe_dir)[4];   /* per capture texel: direction and solid angle */
     float *probe_pixels;
+    unsigned char *probe_alive; /* 0: the probe is inside a wall or outside the rooms, and is never captured or read */
     int *probe_ids;
     int probe_stride, probe_cursor;
     int probes_pending;      /* probe captures left before the indirect light has settled */

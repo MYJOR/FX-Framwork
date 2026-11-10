@@ -9,7 +9,7 @@ out vec4 outColor;
 //   indirect  irradiance probe volume (L1 SH per colour channel), dimmed by screen-space AO
 //   specular  box-projected reflection probe; furniture is reflected through box proxies
 
-#define MAX_LIGHTS 4
+#define MAX_LIGHTS 8
 #define MAX_PROXIES 8
 #define SHADOW_TAPS 24
 
@@ -51,12 +51,12 @@ uniform vec2 uInvScreen;
 uniform vec2 uAO;                        // strength, share that also darkens direct light
 
 // ---- reflections --------------------------------------------------------------------------------
-#define MAX_ENVS 2
-uniform samplerCube uEnvTex, uEnvTex1;   // one reflection probe per room
+#define MAX_ENVS 3
+uniform samplerCube uEnvTex, uEnvTex1, uEnvTex2; // one reflection probe per room
 uniform vec3 uEnvPos[MAX_ENVS], uEnvMin[MAX_ENVS], uEnvMax[MAX_ENVS];
 uniform int uEnvCount;
-uniform vec4 uProbeClamp;                // probe planes: last before the wall, first after it; first and last inside the doorway (z)
-uniform float uProbeClampY;              // highest probe plane under the arch
+uniform vec3 uProbeRoomMin[MAX_ENVS], uProbeRoomMax[MAX_ENVS]; // per room: its first and last probe planes in open air
+uniform vec4 uProbeDoor[MAX_PORTALS];    // per doorway: first and last probe plane inside it (z), highest probe plane under the arch
 uniform vec2 uEnv;                       // max lod, specular scale
 uniform int uProxyCount;
 uniform vec3 uProxyMin[MAX_PROXIES];
@@ -82,21 +82,27 @@ vec3 probeLight(vec3 P, vec3 N) {
     return max(vec3(dot(texture(uShR, uvw), n), dot(texture(uShG, uvw), n), dot(texture(uShB, uvw), n)), 0.0);
 }
 vec3 irradiance(vec3 P, vec3 N) {
-    if (uPortal.y <= uPortal.x) return probeLight(P, N);
-    // Two rooms share the probe grid, and the probes inside the wall between them are dead. A point
-    // reads only the probes of its own room; near the doorway it blends over to the probes that
-    // stand in the opening, which is how light from the other room gets in.
+    if (uPortalCount == 0) return probeLight(P, N);
+    // The rooms share the probe grid, and the probes inside the walls between them are dead. A point
+    // reads only the probes of its own room; near a doorway it blends over to the probes that
+    // stand in the opening, which is how light from the next room gets in.
+    int room = 0;
+    bool inWall = false;
+    for (int k = 0; k < uPortalCount; k++) {
+        if (P.x > uPortal[k].y) room = k + 1;
+        else if (P.x >= uPortal[k].x) inWall = true;
+    }
     vec3 Q = P;
-    if (P.x < uPortal.x) Q.x = min(P.x, uProbeClamp.x);
-    else if (P.x > uPortal.y) Q.x = max(P.x, uProbeClamp.y);
-    float dx = max(max(uPortal.x - P.x, P.x - uPortal.y), 0.0);
-    float dz = max(abs(P.z - uPortal.z) - uPortal.w, 0.0);
-    float w = (1.0 - smoothstep(0.0, 0.7, dx)) * (1.0 - smoothstep(0.0, 0.25, dz));
-    vec3 E = w < 1.0 ? probeLight(Q, N) : vec3(0.0);
-    if (w > 0.0) E = mix(E, probeLight(vec3(P.x, min(P.y, uProbeClampY), clamp(P.z, uProbeClamp.z, uProbeClamp.w)), N), w);
+    if (!inWall) Q.xz = clamp(P.xz, uProbeRoomMin[room].xz, uProbeRoomMax[room].xz);
+    vec3 E = probeLight(Q, N);
+    for (int k = 0; k < uPortalCount; k++) {
+        float dx = max(max(uPortal[k].x - P.x, P.x - uPortal[k].y), 0.0);
+        float dz = max(abs(P.z - uPortal[k].z) - uPortal[k].w, 0.0);
+        float w = (1.0 - smoothstep(0.0, 0.7, dx)) * (1.0 - smoothstep(0.0, 0.25, dz));
+        if (w > 0.0) E = mix(E, probeLight(vec3(P.x, min(P.y, uProbeDoor[k].z), clamp(P.z, uProbeDoor[k].x, uProbeDoor[k].y)), N), w);
+    }
     return E;
 }
-
 // ---- rectangular area light: diffuse form factor ------------------------------------------------
 // Integral over one polygon edge as seen from the shaded point (Heitz/Hill, "LTC" area lights).
 vec3 edgeIntegral(vec3 a, vec3 b) {
@@ -167,23 +173,24 @@ vec3 reflection(vec3 P, vec3 R, float rough) {
     vec3 inv = 1.0 / (R + vec3(equal(R, vec3(0.0))) * 1e-6);
     // where the reflected ray leaves the room: the probe then lines up with the real walls
     // which room's probe: they cross-fade through the thickness of the wall between them
-    float second = uEnvCount > 1 ? smoothstep(uPortal.x, uPortal.y, P.x) : 0.0;
     float here = luma(irradiance(P, R));
     vec3 col = vec3(0.0);
     float tRoom = 0.0;
-    for (int e = 0; e < 2; e++) {
-        float share = e == 0 ? 1.0 - second : second;
+    for (int e = 0; e < uEnvCount; e++) {
+        float share = 1.0;
+        if (e > 0) share *= smoothstep(uPortal[e - 1].x, uPortal[e - 1].y, P.x);
+        if (e < uEnvCount - 1) share *= 1.0 - smoothstep(uPortal[e].x, uPortal[e].y, P.x);
         if (share <= 0.0) continue;
         vec3 tm = max((uEnvMax[e] - P) * inv, (uEnvMin[e] - P) * inv);
         float t = max(min(tm.x, min(tm.y, tm.z)), 0.0);
         vec3 d = P + R * t - uEnvPos[e];
-        vec3 c = e == 0 ? textureLod(uEnvTex, d, rough * uEnv.x).rgb : textureLod(uEnvTex1, d, rough * uEnv.x).rgb;
+        float lod = rough * uEnv.x;
+        vec3 c = e == 0 ? textureLod(uEnvTex, d, lod).rgb : (e == 1 ? textureLod(uEnvTex1, d, lod).rgb : textureLod(uEnvTex2, d, lod).rgb);
         // the probe sees the room from one point; rescale it by how much light actually reaches here
         float there = luma(irradiance(uEnvPos[e], R));
         col += share * c * mix(1.0, clamp(here / max(there, 1e-3), 0.0, 1.0), 0.85);
         if (share >= 0.5) tRoom = t;
     }
-
     // furniture: nearest proxy box hit before the wall
     float best = tRoom;
     vec3 hitN = vec3(0.0);
@@ -216,9 +223,70 @@ vec3 perturbNormal(vec3 N, vec3 P, vec2 uv, vec3 tn) {
     return normalize(mat3(T * invmax, B * invmax, N) * tn);
 }
 
+// How much of the torch's beam reaches the fragment: its pattern, its shadow, the walls. c = cosine
+// of the angle to the beam's axis.
+float flashBeam(vec3 Ng, float c) {
+    // a bright core, a dimmer ring around it from the reflector, and a little spill
+    float beam = smoothstep(0.5, 0.9, c) * 0.035; // spill; the beam itself comes from the pattern texture
+    vec4 fc = uFlashMat * vec4(vWorld + Ng * 0.012, 1.0);
+    if (fc.w > 0.0) {
+        vec3 fp = fc.xyz / fc.w * 0.5 + 0.5;
+        if (fp.x > 0.0 && fp.x < 1.0 && fp.y > 0.0 && fp.y < 1.0 && fp.z < 1.0) {
+            vec2 cuv = (fp.xy - 0.5) * uFlashShape.x + 0.5;
+            float ck = all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) ? texture(uFlashCookie, cuv).r : 0.0;
+            beam += mix(ck, ck * ck * 2.2, uFlashShape.z);
+            // a small source: shadows are crisp, only softened enough to hide the texels
+            float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+            float lit = 0.0;
+            for (int i = 0; i < 6; i++) lit += texture(uFlashShadow, vec3(fp.xy + vogel(i, 6, rot) * (1.6 / 768.0), fp.z));
+            beam *= lit / 6.0;
+        }
+    }
+    return beam * portalVis(vWorld, uFlashPos.xyz, 0.0); // walls stop it too
+}
+
+// All the diffuse light a surface here would receive if it faced N (decals only: the same sums as in main).
+vec3 diffuseLight(vec3 N, vec3 Ng, float beam) {
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < uLightCount; i++) {
+        float through = portalVis(vWorld, uLightPos[i], length(uLightU[i]) * 0.7);
+        if (through <= 0.0) continue;
+        float ff = rectFormFactor(i, vWorld, N);
+        if (ff > 0.0) sum += uLightRadiance[i] * (ff * shadow(i, vWorld, Ng) * through);
+    }
+    sum = (sum + irradiance(vWorld + Ng * 0.15, N)) * uSceneLight;
+    if (uFlashPos.w > 0.0) {
+        vec3 Lv = uFlashPos.xyz - vWorld;
+        float d2 = dot(Lv, Lv);
+        sum += uFlashColor * (uFlashPos.w * beam * max(dot(N, Lv * inversesqrt(d2)), 0.0) / ((d2 + 0.25) * (1.0 + uFlashShape.y * d2)));
+        vec4 lit_patch = texelFetch(uFlashBounceTex, ivec2(0), 0);
+        vec3 Bv = uFlashPos.xyz + uFlashDir * max(lit_patch.a - 0.25, lit_patch.a * 0.5) - vWorld;
+        float b2 = dot(Bv, Bv);
+        sum += portalVis(vWorld, Bv + vWorld, 0.3) * uFlashColor * lit_patch.rgb * (uFlashBounce * (dot(N, Bv * inversesqrt(b2 + 1e-4)) * 0.4 + 0.6) / (b2 + 1.0));
+    }
+    return sum;
+}
+
 void main() {
     // ---- material ----
     vec3 tex = texture(uAlbedoTex, vUV).rgb;
+    if (uMat.z > 0.5) {
+        // A decal is blended by multiplication: this is how much of the surface's light it keeps.
+        // Its albedo texture stains the surface; its normal map dents it, which changes the light
+        // the surface receives by the ratio computed here (the surface's own colour cancels out).
+        vec3 keep = tex;
+        if (uMat.w > 0.0) {
+            vec3 Ng = normalize(vNormal);
+            vec3 tn = texture(uNormalTex, vUV).xyz * 2.0 - 1.0;
+            tn.xy *= uMat.w;
+            float beam = 0.0;
+            if (uFlashPos.w > 0.0) beam = flashBeam(Ng, dot(normalize(vWorld - uFlashPos.xyz), uFlashDir));
+            vec3 bent = diffuseLight(perturbNormal(Ng, vWorld, vUV, tn), Ng, beam), flat_ = diffuseLight(Ng, Ng, beam);
+            keep *= clamp((bent + 1e-4) / (flat_ + 1e-4), 0.0, 3.0);
+        }
+        outColor = vec4(uDebugView == 0 ? keep : vec3(1.0), 1.0);
+        return;
+    }
     float texLuma = luma(tex);
     vec3 albedo = mix(tex, vec3(texLuma), uTint.a) * uTint.rgb;
     float rough = uMat.x, metal = uMat.y;
@@ -255,9 +323,11 @@ void main() {
     vec3 direct = vec3(0.0);
     float shadowAll = 0.0, weightAll = 0.0;
     for (int i = 0; i < uLightCount; i++) {
+        float through = portalVis(vWorld, uLightPos[i], length(uLightU[i]) * 0.7);
+        if (through <= 0.0) continue; // behind a wall: most lights, for most pixels
         float ff = rectFormFactor(i, vWorld, N);
         if (ff <= 0.0) continue;
-        float s = shadow(i, vWorld, Ng) * portalVis(vWorld, uLightPos[i], length(uLightU[i]) * 0.7);
+        float s = shadow(i, vWorld, Ng) * through;
         direct += uLightRadiance[i] * (ff * s);
         shadowAll += ff * s;
         weightAll += ff;
@@ -271,23 +341,7 @@ void main() {
         float d2 = dot(Lv, Lv);
         vec3 L = Lv * inversesqrt(d2);
         float c = dot(-L, uFlashDir);
-        // a bright core, a dimmer ring around it from the reflector, and a little spill
-        float beam = smoothstep(0.5, 0.9, c) * 0.035; // spill; the beam itself comes from the pattern texture
-        vec4 fc = uFlashMat * vec4(vWorld + Ng * 0.012, 1.0);
-        if (fc.w > 0.0) {
-            vec3 fp = fc.xyz / fc.w * 0.5 + 0.5;
-            if (fp.x > 0.0 && fp.x < 1.0 && fp.y > 0.0 && fp.y < 1.0 && fp.z < 1.0) {
-                vec2 cuv = (fp.xy - 0.5) * uFlashShape.x + 0.5;
-                float ck = all(greaterThan(cuv, vec2(0.0))) && all(lessThan(cuv, vec2(1.0))) ? texture(uFlashCookie, cuv).r : 0.0;
-                beam += mix(ck, ck * ck * 2.2, uFlashShape.z);
-                // a small source: shadows are crisp, only softened enough to hide the texels
-                float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-                float lit = 0.0;
-                for (int i = 0; i < 6; i++) lit += texture(uFlashShadow, vec3(fp.xy + vogel(i, 6, rot) * (1.6 / 768.0), fp.z));
-                beam *= lit / 6.0;
-            }
-        }
-        beam *= portalVis(vWorld, uFlashPos.xyz, 0.0); // walls stop it too
+        float beam = flashBeam(Ng, c);
         float NoL = max(dot(N, L), 0.0);
         vec3 E = uFlashColor * (uFlashPos.w * beam * NoL / ((d2 + 0.25) * (1.0 + uFlashShape.y * d2)));
         direct += E;
