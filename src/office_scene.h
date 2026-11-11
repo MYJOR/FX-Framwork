@@ -13,6 +13,15 @@
 
 typedef struct { float x0, z0, x1, z1; } OfficeCollider; /* solid footprint on the floor */
 
+#define OFFICE_ROOMS 3        /* the office, the hallway, the big room: in the order of scene.envs */
+#define OFFICE_MAX_SWITCHES 4
+/* A light switch on a wall, beside a doorway. It works the ceiling lights of the room it is in. */
+typedef struct {
+    V3 pos, normal;   /* centre of the plate on the wall; the way it faces */
+    int room;
+    int lever;        /* first vertex of its lever in Office.room: rebuilt when it is thrown */
+} OfficeSwitch;
+
 typedef enum { OBJ_FURNITURE, OBJ_LIGHT, OBJ_FIXTURE, OBJ_KIND_COUNT } OfficeObjectKind;
 /* What can be placed. Every object is an instance of one of these. */
 typedef enum { OT_CHAIR, OT_DESK, OT_LIGHT_PANEL, OT_VENT, OT_COUNT } OfficeObjectType;
@@ -53,6 +62,9 @@ typedef struct {
     float *room; int room_count;  /* the fixed part: vertices and their draws */
     IntDraw room_draws[8]; int room_draw_count;
     float *world; int world_cap;  /* the vertex buffer as uploaded */
+    int room_base;                /* where the fixed part starts in it */
+    OfficeSwitch switches[OFFICE_MAX_SWITCHES]; int switch_count;
+    int room_on[OFFICE_ROOMS];    /* per room: its switch is up, its ceiling lights are on */
     V3 spawn;        /* feet position */
     float spawn_yaw;
 } Office;
@@ -67,6 +79,15 @@ void office_update(Office *o);
 void office_clamp_object(const Office *o, OfficeObject *obj);
 /* Object space -> world for a point of an object. */
 V3 office_object_to_world(const OfficeObject *obj, V3 p);
+
+/* The room a point at this x is in. */
+int office_room_at(float x);
+/* Throws the switches of a room: their levers go up (on) or down. The caller dims the lights
+   (IntRenderer.room_light). */
+void office_set_room_lights(Office *o, int room, int on);
+/* The switch somebody standing at eye and looking along dir (normalised) could reach out and
+   press, or -1. */
+int office_switch_at(const Office *o, V3 eye, V3 dir);
 
 const char *office_type_name(OfficeObjectType type);
 int office_light_count(const Office *o, int visible_only);

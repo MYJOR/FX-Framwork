@@ -179,6 +179,13 @@ static void set_portal(GLuint p, const IntScene *s) {
 }
 void interior_set_portals(GLuint program, const IntScene *s) { set_portal(program, s); }
 
+/* Which room a point at this x is in: an index into IntScene.envs. */
+static int room_of(const IntScene *s, float x) {
+    int room = 0;
+    for (int k = 0; k < s->portal_count; k++) if (x > (s->portals[k].x0 + s->portals[k].x1) * 0.5f) room = k + 1;
+    return room < INT_MAX_ENVS ? room : INT_MAX_ENVS - 1;
+}
+
 /* The probes' light at p, read the way the forward shader reads it: blended between the probes around
    it, leaving out the dead ones inside walls. */
 static void probe_sh_at(const IntRenderer *r, V3 p, float out[3][4]) {
@@ -336,6 +343,7 @@ static void fwd_begin(IntRenderer *r, const IntScene *s, const IntLook *look, in
     set_v3(p, "uProxyAlbedo", s->proxy_albedo);
     glUniform2f(ul(p, "uAO"), 0.0f, 0.0f);
     glUniform1f(ul(p, "uSceneLight"), 1.0f); /* the bakes always see the lights on, and no torch */
+    glUniform3f(ul(p, "uRoomLight"), 1.0f, 1.0f, 1.0f);
     glUniform4f(ul(p, "uFlashPos"), 0.0f, 0.0f, 0.0f, 0.0f);
     glUniform2f(ul(p, "uGloss"), 0.22f, 1.0f); /* ... and the materials as authored */
 
@@ -457,6 +465,7 @@ int interior_init(IntRenderer *r) {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     r->scene_light = 1.0f;
+    for (int i = 0; i < INT_MAX_ENVS; i++) r->room_light[i] = 1.0f;
     r->flash_color = v3(1.0f, 0.96f, 0.88f);
     r->flash_cone = 1.0f; r->flash_spec = 1.0f; r->flash_bounce = 1.0f;
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
@@ -1047,6 +1056,15 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     fwd_begin(r, s, look, PASS_FINAL, view);
     glUniform1f(ul(r->fwd.id, "uSceneLight"), r->scene_light);
+    glUniform3f(ul(r->fwd.id, "uRoomLight"), r->room_light[0], r->room_light[1], r->room_light[2]);
+    if (s->light_count) { /* each light is as bright as its room's switch says */
+        float rad[INT_MAX_LIGHTS * 3];
+        for (int i = 0; i < s->light_count; i++) {
+            V3 c = v3_scale(s->lights[i].radiance, r->room_light[room_of(s, s->lights[i].pos.x)]);
+            memcpy(rad + i * 3, &c, 12);
+        }
+        glUniform3fv(ul(r->fwd.id, "uLightRadiance"), s->light_count, rad);
+    }
     glUniform2f(ul(r->fwd.id, "uGloss"), look->rough_min, look->rough_scale);
     if (r->flash > 0.0f) {
         V3 o = r->flash_pos;
@@ -1084,16 +1102,39 @@ void interior_render(IntRenderer *r, const IntScene *s, const IntLook *look, V3 
     /* eye adaptation: meter the frame, move the exposure gain towards what the meter asks for */
     int adapt = look->adapt_max > 1.0f && view == INT_VIEW_FINAL;
 
+    /* what the game leaves on the room's surfaces: blended over them, hidden by whatever stands in front */
+    if (r->overlay_draw && view == INT_VIEW_FINAL) {
+        IntOverlayView ov;
+        memset(&ov, 0, sizeof ov);
+        ov.view_proj = vp; ov.cam = cam;
+        int room = room_of(s, cam.x);
+        ov.scene_light = r->scene_light * r->room_light[room];
+        ov.env_tex = r->env_tex[room < s->env_count ? room : 0];
+        ov.env_max_lod = ENV_MAX_LOD;
+        ov.flash = r->flash; ov.flash_pos = r->flash_pos; ov.flash_dir = r->flash_dir;
+        ov.flash_color = r->flash_color; ov.flash_cone = r->flash_cone;
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); /* alpha stays 1: that is the room's mark for the depth of field */
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
+        glDisable(GL_CULL_FACE);
+        r->overlay_draw(r->overlay_user, s, &ov);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
+
     /* what the player holds, over the room: same target, so everything after this treats it as part of the picture */
     if (r->held_draw && view == INT_VIEW_FINAL) {
         IntHeldView hv;
         memset(&hv, 0, sizeof hv);
         hv.view = view_m; hv.cam = cam; hv.aspect = aspect;
         hv.near_z = CAM_NEAR; hv.far_z = CAM_FAR;
-        hv.scene_light = r->scene_light;
+        int room = room_of(s, cam.x);
+        hv.scene_light = r->scene_light * r->room_light[room];
         probe_sh_at(r, v3_add(cam, v3_scale(fwd, 0.2f)), hv.sh);
-        int room = 0;
-        for (int k = 0; k < s->portal_count; k++) if (cam.x > (s->portals[k].x0 + s->portals[k].x1) * 0.5f) room = k + 1;
         hv.env_tex = r->env_tex[room < s->env_count ? room : 0];
         hv.env_max_lod = ENV_MAX_LOD;
         hv.exposure_tex = adapt ? r->expo_tex[r->expo_cur] : r->white_tex; /* last frame's: this frame is not metered yet */

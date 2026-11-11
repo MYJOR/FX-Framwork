@@ -37,9 +37,14 @@ float portalVis(vec3 P, vec3 L, float soft) {
         vec4 d = uPortal[k];
         float sp = P.x < d.x ? -1.0 : (P.x > d.y ? 1.0 : 0.0);
         float sl = L.x < d.x ? -1.0 : (L.x > d.y ? 1.0 : 0.0);
-        if (sp * sl >= 0.0) continue;
-        for (int i = 0; i < 2; i++) { // the opening is a short tunnel: the ray has to clear both ends
-            float t = ((i == 0 ? d.x : d.y) - P.x) / (L.x - P.x);
+        if (sp == sl) continue;
+        // The opening is a short tunnel: the ray has to clear both ends. A point inside the wall's
+        // thickness (the doorway's lining; also the last pixel of a wall that ends at this one, whose
+        // position is extrapolated past the corner) has only the end between it and the light to clear.
+        for (int i = 0; i < 2; i++) {
+            float face = i == 0 ? d.x : d.y;
+            if ((face - P.x) * (L.x - face) <= 0.0) continue;
+            float t = (face - P.x) / (L.x - P.x);
             vec3 Q = mix(P, L, t);
             float w = max(soft * t, 0.012);
             vis = min(vis, 1.0 - smoothstep(-w, w, portalShape(k, vec2(Q.z - d.z, Q.y))));

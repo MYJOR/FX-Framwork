@@ -65,6 +65,7 @@ uniform vec3 uProxyAlbedo;
 
 // ---- hand torch and the master switch for the room's own lights (final pass only) ----
 uniform float uSceneLight;   // 1 = lights on, 0 = dark
+uniform vec3 uRoomLight;     // the same per room (MAX_ENVS of them), on top of it. uLightRadiance already has it.
 uniform vec4 uFlashPos;      // xyz, brightness (0 = off)
 uniform vec3 uFlashDir;
 uniform mat4 uFlashMat;      // world -> the torch's clip space: shadow map and beam pattern
@@ -103,6 +104,23 @@ vec3 irradiance(vec3 P, vec3 N) {
     }
     return E;
 }
+// How much of the baked light (bounce light, reflections) is left at P. x: by the switch of the room P
+// is in. y: the same plus what comes in from the rooms next door: the bake holds every light at once
+// and cannot tell them apart, so a dark room keeps a share of its baked light that falls off with the
+// distance to a doorway with light behind it.
+vec2 roomLight(vec3 P) {
+    float own = uRoomLight[0];
+    for (int k = 0; k < uPortalCount; k++) own = mix(own, uRoomLight[k + 1], smoothstep(uPortal[k].x, uPortal[k].y, P.x));
+    float lit = own;
+    for (int k = 0; k < uPortalCount; k++) {
+        float beyond = P.x < 0.5 * (uPortal[k].x + uPortal[k].y) ? uRoomLight[k + 1] : uRoomLight[k];
+        float dx = max(max(uPortal[k].x - P.x, P.x - uPortal[k].y), 0.0);
+        float dz = max(abs(P.z - uPortal[k].z) - uPortal[k].w, 0.0);
+        lit = max(lit, beyond * 0.4 / (1.0 + 1.2 * (dx * dx + dz * dz)));
+    }
+    return vec2(own, lit);
+}
+
 // ---- rectangular area light: diffuse form factor ------------------------------------------------
 // Integral over one polygon edge as seen from the shaded point (Heitz/Hill, "LTC" area lights).
 vec3 edgeIntegral(vec3 a, vec3 b) {
@@ -254,7 +272,7 @@ vec3 diffuseLight(vec3 N, vec3 Ng, float beam) {
         float ff = rectFormFactor(i, vWorld, N);
         if (ff > 0.0) sum += uLightRadiance[i] * (ff * shadow(i, vWorld, Ng) * through);
     }
-    sum = (sum + irradiance(vWorld + Ng * 0.15, N)) * uSceneLight;
+    sum = (sum + irradiance(vWorld + Ng * 0.15, N) * roomLight(vWorld).y) * uSceneLight;
     if (uFlashPos.w > 0.0) {
         vec3 Lv = uFlashPos.xyz - vWorld;
         float d2 = dot(Lv, Lv);
@@ -333,7 +351,8 @@ void main() {
         weightAll += ff;
     }
     direct *= uSceneLight;
-    vec3 indirect = irradiance(vWorld + Ng * 0.15, N) * uSceneLight;
+    vec2 switched = roomLight(vWorld) * uSceneLight;
+    vec3 indirect = irradiance(vWorld + Ng * 0.15, N) * switched.y;
 
     vec3 flashSpec = vec3(0.0);
     if (uFlashPos.w > 0.0) {
@@ -373,12 +392,12 @@ void main() {
         vec3 R = reflect(-V, N);
         R = normalize(R + Ng * max(0.02 - dot(R, Ng), 0.0)); // keep it above the surface
         float specOcclusion = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
-        spec = reflection(vWorld + Ng * 0.01, R, rough) * envBRDF(F0, rough, NoV) * specOcclusion * uEnv.y * uSceneLight + flashSpec;
+        spec = reflection(vWorld + Ng * 0.01, R, rough) * envBRDF(F0, rough, NoV) * specOcclusion * uEnv.y * switched.y + flashSpec;
         col += spec;
     }
 
     // light diffusers. Black for the irradiance probes: their light is already the analytic direct term.
-    if (uEmissive != vec3(0.0)) col = uPass == PASS_PROBE ? vec3(0.0) : mix(vec3(0.7) * (direct + indirect), uEmissive, uSceneLight); // switched off: a milky sheet of plastic
+    if (uEmissive != vec3(0.0)) col = uPass == PASS_PROBE ? vec3(0.0) : mix(vec3(0.7) * (direct + indirect), uEmissive, switched.x); // switched off: a milky sheet of plastic
 
     if (uDebugView == 1 || uDebugView == 10) col = albedo; // 10: capture for the torch's bounce
     else if (uDebugView == 2) col = N * 0.5 + 0.5;

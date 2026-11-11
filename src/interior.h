@@ -133,12 +133,28 @@ typedef struct {
     float aspect;
     float near_z, far_z; /* the scene's depth range: use the same one */
     float sh[3][4];     /* light arriving at the hand, per colour channel: irradiance / pi = L0 + dot(L1, n) */
-    float scene_light;  /* master switch of the room's own lights, 0..1: scales sh, the lights and env_tex */
+    float scene_light;  /* the lights of the room the camera is in, 0..1: scales sh, the lights and env_tex */
     GLuint env_tex;     /* reflection probe (cube map) of the room the camera is in */
     float env_max_lod;  /* its mip for roughness 1 */
     GLuint exposure_tex; /* one texel, r = the gain the eye adaptation adds */
 } IntHeldView;
 typedef void (*IntHeldFn)(void *user, const IntScene *s, const IntHeldView *v);
+
+/* Things that come and go on the room's surfaces while the game runs (the handprints): drawn by their
+   owner over the lit room, before whatever the player holds. On entry: depth test on, depth writes
+   off, a polygon offset towards the camera, blending ONE, ONE_MINUS_SRC_ALPHA: write premultiplied
+   colour, and alpha = how much of the surface underneath is hidden. */
+typedef struct {
+    M4 view_proj;
+    V3 cam;
+    float scene_light;  /* the lights of the room the camera is in, 0..1 */
+    GLuint env_tex;     /* reflection probe (cube map) of the room the camera is in */
+    float env_max_lod;
+    float flash;        /* the torch: brightness (0 = off), where it is, where it points, colour, beam narrowing */
+    V3 flash_pos, flash_dir, flash_color;
+    float flash_cone;
+} IntOverlayView;
+typedef void (*IntOverlayFn)(void *user, const IntScene *s, const IntOverlayView *v);
 
 typedef struct {
     Program fwd, depth, gbuf, ao, blur, post, prefilter, dof, dof_mix, meter, adapt, bounce, glow, glow_blur;
@@ -187,8 +203,12 @@ typedef struct {
     float grain_seed;        /* changes every frame so the low light noise moves */
     GLuint meter_fbo, meter_tex, expo_fbo[2], expo_tex[2]; int expo_cur; /* light meter, adapted exposure gain */
     float scene_light;       /* scales everything the scene's own lights contribute: 1 = on, 0 = dark. No rebake needed. */
+    float room_light[INT_MAX_ENVS]; /* the same per room (in the order of IntScene.envs), on top of scene_light: a room's
+                                own switch. A dark room still gets what comes in through its doorways. */
     IntHeldFn held_draw;     /* draws what the player holds, or NULL. Final view only. */
     void *held_user;
+    IntOverlayFn overlay_draw; /* draws on the room's surfaces, or NULL. Final view only. */
+    void *overlay_user;
     GLuint out_fbo;          /* where the finished frame goes: 0 = the window */
     int out_x, out_y;        /* its lower left corner there, in pixels (an editor draws the view inside its panels) */
 

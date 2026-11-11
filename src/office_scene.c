@@ -59,7 +59,7 @@ static const float CEIL_COLS[4] = {1040.5f, 1199.0f, 1365.5f, 1525.5f};
 static const float CEIL_ROWS[4] = {8.5f, 156.5f, 324.5f, 485.0f};
 
 /* M_EMITTER0 + i is the diffuser of light i */
-enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER_LAST = M_EMITTER0 + INT_MAX_LIGHTS - 1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_SMUDGE, M_COUNT };
+enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER_LAST = M_EMITTER0 + INT_MAX_LIGHTS - 1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_SMUDGE, M_SWITCH, M_COUNT };
 
 /* ---- textures ----------------------------------------------------------------------------------- */
 
@@ -278,6 +278,10 @@ static void arch_point(int i, float door_z, float *z, float *y) {
 static void arch_wall(VertexBuf *b, float x, float nx, float z_lo, float z_hi, float door_z) {
     V3 n = v3(nx, 0, 0);
     float za = door_z - DOOR_HW, zb = door_z + DOOR_HW;
+    /* This face is split at the spring line and the walls it meets at its two ends are not, which
+       leaves pinholes down those corners. Run it on a little way behind them: the corner then lies
+       inside a triangle. (They show as soon as one room is dark and the next one is lit.) */
+    z_lo -= 0.02f; z_hi += 0.02f;
     for (int side = 0; side < 2; side++) { /* beside the doorway, split at the spring line so the arch pieces meet vertices */
         float z0 = side ? zb : z_lo, z1 = side ? z_hi : za;
         wall_quad(b, v3(x, 0, z0), v3(x, 0, z1), v3(x, DOOR_SPRING, z1), v3(x, DOOR_SPRING, z0), n, 0);
@@ -319,6 +323,146 @@ static void arch_lining(VertexBuf *b, float x0, float x1, float door_z) {
         }
     }
 }
+/* ---- light switches ------------------------------------------------------------------------------ */
+
+/* "light switch.png" is a photograph of a toggle switch, 1086 x 1448, with its normal map beside it.
+   The plate in it is drawn against a chequered background, so the plate is modelled to its outline
+   (a rounded rectangle) and the background is never shown. The lever is modelled too, in front of
+   the painted one, so it can be thrown. Measured in the picture, in pixels: */
+#define SW_TEX_W 1086.0f
+#define SW_TEX_H 1448.0f
+#define SW_CX 541.5f            /* centre of the plate */
+#define SW_CY 722.0f
+#define SW_HALF_X 423.5f        /* its half size */
+#define SW_HALF_Y 660.0f
+#define SW_CORNER 37.0f         /* radius of its corners */
+#define SW_LEVER_CY 695.0f      /* the lever: the part of the rocker between the words ON and OFF */
+#define SW_LEVER_HALF_X 42.0f
+#define SW_LEVER_HALF_Y 71.0f
+#define SW_M (0.070f / (2.0f * SW_HALF_X)) /* metres per pixel: the plate is 70 mm wide (and so 109 mm tall) */
+#define SW_DEPTH 0.004f         /* how far the plate stands off the wall */
+#define SW_HEIGHT 1.22f         /* centre of the plate above the floor */
+#define SW_BESIDE 0.28f         /* ... and beside the edge of its doorway */
+#define SW_CORNER_SEGS 4
+#define SW_LEVER_VERTS 30
+
+/* A point of a switch: x to the right as seen from the room, y up, z out of the wall, from the plate's centre. */
+static V3 sw_point(const OfficeSwitch *sw, float x, float y, float z) {
+    V3 r = v3_cross(v3(0, 1, 0), sw->normal);
+    return v3_add(sw->pos, v3_add(v3_scale(r, x), v3_add(v3(0, y, 0), v3_scale(sw->normal, z))));
+}
+/* Same, as a direction. */
+static V3 sw_dir(const OfficeSwitch *sw, float x, float y, float z) {
+    V3 o = sw_point(sw, 0, 0, 0), p = sw_point(sw, x, y, z);
+    return v3_norm(v3(p.x - o.x, p.y - o.y, p.z - o.z));
+}
+/* One triangle of a switch facing n, each corner given as (x, y, z) in the switch's space. With
+   plain set, it shows a bare patch of the plate's plastic instead of the picture at that spot. */
+static void sw_tri(VertexBuf *b, const OfficeSwitch *sw, const float p[3][3], V3 n, int plain) {
+    V3 w[3];
+    for (int i = 0; i < 3; i++) w[i] = sw_point(sw, p[i][0], p[i][1], p[i][2]);
+    int order[3] = {0, 1, 2};
+    V3 e1 = v3_add(w[1], v3_scale(w[0], -1.0f)), e2 = v3_add(w[2], v3_scale(w[0], -1.0f));
+    if (v3_dot(v3_cross(e1, e2), n) < 0.0f) { order[1] = 2; order[2] = 1; }
+    for (int i = 0; i < 3; i++) {
+        int k = order[i];
+        /* pulled in a hair so the filter never reaches the background around the plate */
+        float px = plain ? 300.0f : SW_CX + p[k][0] / SW_M * 0.985f, py = plain ? 300.0f : SW_CY - p[k][1] / SW_M * 0.990f;
+        push_vertex(b, w[k], n, px / SW_TEX_W, 1.0f - py / SW_TEX_H);
+    }
+}
+static void sw_quad(VertexBuf *b, const OfficeSwitch *sw, const float p[4][3], V3 n, int plain) {
+    const float t0[3][3] = {{p[0][0], p[0][1], p[0][2]}, {p[1][0], p[1][1], p[1][2]}, {p[2][0], p[2][1], p[2][2]}};
+    const float t1[3][3] = {{p[0][0], p[0][1], p[0][2]}, {p[2][0], p[2][1], p[2][2]}, {p[3][0], p[3][1], p[3][2]}};
+    sw_tri(b, sw, t0, n, plain);
+    sw_tri(b, sw, t1, n, plain);
+}
+
+/* The plate: its face with the picture on it, and its rim. */
+static void switch_plate(VertexBuf *b, const OfficeSwitch *sw) {
+    enum { N = 4 * (SW_CORNER_SEGS + 1) };
+    const float hx = SW_HALF_X * SW_M, hy = SW_HALF_Y * SW_M, r = SW_CORNER * SW_M;
+    float out[N][2];
+    for (int c = 0; c < 4; c++) /* corners, anticlockwise from the right-hand top one */
+        for (int i = 0; i <= SW_CORNER_SEGS; i++) {
+            float a = ((float)c + (float)i / (float)SW_CORNER_SEGS) * PI * 0.5f;
+            float cx = (c == 0 || c == 3) ? hx - r : -hx + r, cy = c < 2 ? hy - r : -hy + r;
+            out[c * (SW_CORNER_SEGS + 1) + i][0] = cx + r * cosf(a);
+            out[c * (SW_CORNER_SEGS + 1) + i][1] = cy + r * sinf(a);
+        }
+    for (int i = 0; i < N; i++) {
+        const float *p = out[i], *q = out[(i + 1) % N];
+        const float face[3][3] = {{0, 0, SW_DEPTH}, {p[0], p[1], SW_DEPTH}, {q[0], q[1], SW_DEPTH}};
+        sw_tri(b, sw, face, sw->normal, 0);
+        const float rim[4][3] = {{p[0], p[1], SW_DEPTH}, {q[0], q[1], SW_DEPTH}, {q[0], q[1], 0}, {p[0], p[1], 0}};
+        sw_quad(b, sw, rim, sw_dir(sw, q[1] - p[1], p[0] - q[0], 0), 0);
+    }
+}
+
+/* The lever, SW_LEVER_VERTS vertices: a stubby bat hinged in the plate, leaning up when on and down when off. */
+static void switch_lever(VertexBuf *b, const OfficeSwitch *sw, int on) {
+    const float a = SW_LEVER_HALF_X * SW_M, h = SW_LEVER_HALF_Y * SW_M, yc = (SW_CY - SW_LEVER_CY) * SW_M, s = on ? 1.0f : -1.0f;
+    /* its outline from the side, (along the plate towards the tip, out of the plate): heel, toe, the tip's two corners */
+    const float prof[4][2] = {{-h, 0.0f}, {h, 0.0f}, {h + 0.0008f, 0.0085f}, {h - 0.0052f, 0.0100f}};
+    float y[4], z[4];
+    for (int i = 0; i < 4; i++) { y[i] = yc + s * prof[i][0]; z[i] = SW_DEPTH + prof[i][1]; }
+    for (int side = 0; side < 2; side++) {
+        float x = side ? a : -a;
+        const float q[4][3] = {{x, y[0], z[0]}, {x, y[1], z[1]}, {x, y[2], z[2]}, {x, y[3], z[3]}};
+        sw_quad(b, sw, q, sw_dir(sw, side ? 1.0f : -1.0f, 0, 0), 1);
+    }
+    for (int i = 1; i < 4; i++) { /* the three faces across it: beyond the tip, the tip, and the long back it is pushed by */
+        int j = (i + 1) % 4;
+        const float q[4][3] = {{-a, y[i], z[i]}, {a, y[i], z[i]}, {a, y[j], z[j]}, {-a, y[j], z[j]}};
+        float ny = z[j] - z[i], nz = y[i] - y[j]; /* across the edge; pick the way that points off the lever */
+        float mid_y = (y[i] + y[j]) * 0.5f - yc, mid_z = (z[i] + z[j]) * 0.5f - (SW_DEPTH + 0.004f);
+        if (ny * mid_y + nz * mid_z < 0.0f) { ny = -ny; nz = -nz; }
+        sw_quad(b, sw, q, sw_dir(sw, 0, ny, nz), 1);
+    }
+}
+
+int office_room_at(float x) { return x < ROOM_HX + WALL_T * 0.5f ? 0 : (x < HALL_X1 + WALL_T * 0.5f ? 1 : 2); }
+
+void office_set_room_lights(Office *o, int room, int on) {
+    if (room < 0 || room >= OFFICE_ROOMS) return;
+    o->room_on[room] = on != 0;
+    for (int i = 0; i < o->switch_count; i++) {
+        const OfficeSwitch *sw = &o->switches[i];
+        if (sw->room != room) continue;
+        VertexBuf lever = {0};
+        switch_lever(&lever, sw, o->room_on[room]);
+        if (lever.n == SW_LEVER_VERTS) {
+            size_t bytes = (size_t)SW_LEVER_VERTS * 8 * sizeof(float);
+            memcpy(o->room + (size_t)sw->lever * 8, lever.v, bytes);
+            if (o->world && o->scene.vbo) { /* ... and in the buffer the renderer draws from */
+                size_t at = (size_t)(o->room_base + sw->lever) * 8;
+                memcpy(o->world + at, lever.v, bytes);
+                glBindBuffer(GL_ARRAY_BUFFER, o->scene.vbo);
+                glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)o->scene.vertex_count * 8 * sizeof(float)), o->world, GL_STATIC_DRAW);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+        }
+        free(lever.v);
+    }
+}
+
+int office_switch_at(const Office *o, V3 eye, V3 dir) {
+    const float reach = 1.5f, aim = 0.11f; /* metres: arm's length; how far off the plate's centre the look may pass */
+    int best = -1;
+    float best_off = aim;
+    for (int i = 0; i < o->switch_count; i++) {
+        const OfficeSwitch *sw = &o->switches[i];
+        V3 to = v3_add(sw->pos, v3_scale(eye, -1.0f));
+        if (v3_dot(to, sw->normal) >= 0.0f) continue; /* from behind its wall */
+        float t = v3_dot(to, dir);
+        if (t < 0.05f || t > reach) continue;
+        V3 miss = v3_add(to, v3_scale(dir, -t));
+        float off = sqrtf(v3_dot(miss, miss));
+        if (off < best_off) { best_off = off; best = i; }
+    }
+    return best;
+}
+
 /* ---- movable objects ---------------------------------------------------------------------------- */
 
 static const char *TYPE_NAMES[OT_COUNT] = {"Chair", "Desk", "Light panel", "Vent"};
@@ -429,6 +573,7 @@ void office_update(Office *o) {
             s->draws[s->draw_count++] = d;
         }
     }
+    o->room_base = n;
     memcpy(o->world + (size_t)n * 8, o->room, (size_t)o->room_count * 8 * sizeof(float));
     for (int i = 0; i < o->room_draw_count && s->draw_count < INT_MAX_DRAWS; i++) {
         IntDraw d = o->room_draws[i];
@@ -727,6 +872,10 @@ int office_build(Office *o, const char *asset_dir) {
 
     snprintf(path, sizeof path, "%s/smudge decal.png", asset_dir);
     GLuint smudge_normal = load_decal_normal(path, 6.0f);
+    snprintf(path, sizeof path, "%s/light switch.png", asset_dir);
+    GLuint switch_albedo = load_png_texture(path, 1);
+    snprintf(path, sizeof path, "%s/light switch normal map.png", asset_dir);
+    GLuint switch_normal = load_png_texture(path, 0);
 
     /* ---- materials ---- */
     s->mat_count = M_COUNT;
@@ -758,6 +907,12 @@ int office_build(Office *o, const char *asset_dir) {
     s->mats[M_CEILING] = material(ceil_tex, 0.95f, MAT_SHELL);
     s->mats[M_SMUDGE] = material(0, 1.0f, MAT_DECAL); /* relief only: no stain */
     s->mats[M_SMUDGE].normal = smudge_normal;
+    s->mats[M_SWITCH] = material(switch_albedo, 0.42f, 0); /* moulded plastic, worn to a soft gloss */
+    s->mats[M_SWITCH].normal = switch_normal;
+    s->mats[M_SWITCH].specular = 0.05f;
+    /* the photograph is exposed darker than the room's other textures: lift it to the ivory it is */
+    s->mats[M_SWITCH].tint[0] = s->mats[M_SWITCH].tint[1] = s->mats[M_SWITCH].tint[2] = 1.3f;
+    if (!switch_albedo) { s->mats[M_SWITCH].tint[0] = 0.50f; s->mats[M_SWITCH].tint[1] = 0.36f; s->mats[M_SWITCH].tint[2] = 0.22f; }
 
     /* ---- prototypes: what an object of each type is made of, in its own space ---- */
     VertexBuf vb = {0};
@@ -885,6 +1040,28 @@ int office_build(Office *o, const char *asset_dir) {
     begin_room_draw(o, &vb, M_SMUDGE);
     /* gouges dragged across the plaster of the hallway wall facing the office doorway, at about hand height */
     quad_uv(&vb, v3(HALL_X1 - 0.002f, 1.15f, DOOR_Z + 0.25f), v3(0, 0, 0.85f), v3(0, 0.425f, 0), 0, 0, 1, 1);
+    end_room_draw(o, &vb);
+
+    /* a light switch for every room, on the wall beside the doorway where a hand looks for it coming
+       in; the hallway has a doorway at each end of its run, so it gets one by each */
+    begin_room_draw(o, &vb, M_SWITCH);
+    {
+        const struct { float x, nx, z; int room; } at[OFFICE_MAX_SWITCHES] = {
+            {ROOM_HX, -1.0f, DOOR_Z + DOOR_HW + SW_BESIDE, 0},
+            {HALL_X0, 1.0f, DOOR_Z - DOOR_HW - SW_BESIDE, 1},
+            {HALL_X1, -1.0f, DOOR2_Z + DOOR_HW + SW_BESIDE, 1},
+            {BIG_X0, 1.0f, DOOR2_Z + DOOR_HW + SW_BESIDE, 2}};
+        for (int i = 0; i < OFFICE_ROOMS; i++) o->room_on[i] = 1;
+        for (int i = 0; i < OFFICE_MAX_SWITCHES; i++) {
+            OfficeSwitch *sw = &o->switches[o->switch_count++];
+            sw->pos = v3(at[i].x, SW_HEIGHT, at[i].z);
+            sw->normal = v3(at[i].nx, 0, 0);
+            sw->room = at[i].room;
+            switch_plate(&vb, sw);
+            sw->lever = vb.n;
+            switch_lever(&vb, sw, 1);
+        }
+    }
     end_room_draw(o, &vb);
     o->room = vb.v;
     o->room_count = vb.n;

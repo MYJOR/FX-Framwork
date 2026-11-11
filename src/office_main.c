@@ -11,6 +11,7 @@
 #include "office_scene.h"
 #include "office_editor.h"
 #include "tracker.h"
+#include "handprints.h"
 
 /* Office: first-person interior scene on the same platform / GL / shader layer as the desert.
  *
@@ -21,14 +22,17 @@
  *   Y    scene editor: frees the cursor and opens the panel (src/office_editor.c). Objects are
  *        moved in the view and the lighting is rebaked as they move. Hold the right mouse button
  *        to look around while editing.
- *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L room lights   H horror look   F5 vsync
+ *   F1 debug view (Shift+F1 back)   F2 ambient obscurance   F3 reflections   F4 depth of field   F torch   L all lights   H horror look   F5 vsync
+ *   E              press the light switch being looked at: one by the doorway in every room, and it
+ *                  works the lights of that room only
  *   - / = exposure                  Esc quit (in the editor: deselect, then back to playing)
  *
  *   Xbox controller (XInput, picked up when plugged in, works alongside mouse and keyboard):
  *     left stick move      right stick look     RT or left stick click run     B crouch (toggle)
- *     LT zoom              Y torch              X room lights                  D-pad up horror look
+ *     LT zoom              Y torch              X all lights                   D-pad up horror look
  *     D-pad left / right exposure               Start scene editor <-> play
  *     LB (hold) motion tracker; LT then looks past it at the room
+ *     A press the light switch being looked at
  */
 
 #define PLAY_FPS 30.0f /* play mode is locked to this */
@@ -136,31 +140,74 @@ static float tube_level(float t) {
 }
 
 /* Something for the motion tracker to find: nothing in the office moves by itself, and the tracker
-   only shows what moves. This is a contact with no body, there on the tracker's screen and nowhere
-   else. It walks a loop through the hallway and the big room, stopping at each corner for a while,
-   and while it stands still the tracker loses it. Stands in for whatever the game puts in the level. */
-typedef struct { int leg; float along, wait, speed; TrackerContact contact; } Signal;
+   only shows what moves. This is a thing with no body. It walks a loop through the hallway and the
+   big room, stopping at each corner for a while, and while it stands still the tracker loses it.
 
-static void signal_step(Signal *s, float dt) {
+   Come within HUNT_NEAR of it and it comes for the player, on its hands: each one it puts down leaves
+   a print on the floor (src/handprints.c), left and right in turn, the trail closing in. Walls do not
+   hold it. It stops just short of the player and follows if the player backs away; get HUNT_FAR from
+   it and it loses interest and goes back to its loop. Stands in for whatever the game puts in the level. */
+#define HUNT_NEAR 4.5f     /* metres: nearer than this and it has noticed the player */
+#define HUNT_FAR 8.0f      /* further than this and it gives up */
+#define HUNT_REACH 1.0f    /* how close it comes */
+#define HUNT_PAUSE 0.7f    /* seconds between noticing and the first hand coming down */
+#define HUNT_SPEED 1.15f   /* metres per second while it comes; the player walks at 1.5 */
+#define PRINT_STRIDE 0.36f /* metres between one hand and the next */
+#define PRINT_SPREAD 0.13f /* metres each hand lands to the side of its line */
+typedef struct {
+    int started, leg;     /* leg: the corner of the loop it is walking to */
+    float wait, speed;
+    int hunting, hand;    /* hand: which one comes down next */
+    float stride;         /* metres crawled since the last print */
+    TrackerContact contact;
+} Signal;
+
+static void signal_step(Signal *s, float dt, V3 player, Handprints *prints) {
     static const float path[][2] = {{4.2f, 4.6f},   {4.2f, -3.0f}, {6.4f, -3.0f}, {9.5f, -6.2f}, {12.8f, -4.0f}, /* hallway, doorway, big room */
                                     {12.0f, 1.4f},  {7.6f, 0.8f},  {6.4f, -3.0f}, {4.2f, -3.0f}, {4.2f, -4.6f}};
     const int n = (int)(sizeof path / sizeof path[0]);
-    const float walk = 1.3f; /* metres per second */
-    const float *a = path[s->leg % n], *b = path[(s->leg + 1) % n];
-    float dx = b[0] - a[0], dz = b[1] - a[1], len = sqrtf(dx * dx + dz * dz);
-    int moving = s->wait <= 0.0f;
-    if (!moving) s->wait -= dt;
-    s->speed += ((moving ? walk : 0.0f) - s->speed) * (1.0f - expf(-dt * 4.0f));
-    s->along += s->speed * dt;
-    if (s->along >= len) { /* at the corner: stand there for one to four seconds */
-        s->along = 0.0f; s->speed = 0.0f;
-        s->leg = (s->leg + 1) % n;
-        s->wait = 1.0f + 3.0f * (float)((s->leg * 7 + 3) % 5) / 4.0f;
-        a = b; dx = dz = 0.0f; len = 1.0f;
+    const float walk = 1.3f; /* metres per second on its loop */
+    if (!s->started) { s->started = 1; s->contact.x = path[0][0]; s->contact.z = path[0][1]; s->leg = 1; }
+
+    float px = player.x - s->contact.x, pz = player.z - s->contact.z, pd = sqrtf(px * px + pz * pz);
+    if (!s->hunting && pd < HUNT_NEAR) {
+        s->hunting = 1; s->wait = HUNT_PAUSE; s->speed = 0.0f;
+        s->stride = PRINT_STRIDE; /* the first hand comes down as soon as it moves */
+    } else if (s->hunting && pd > HUNT_FAR) { /* lost: stand a moment, then make for the nearest corner of the loop */
+        s->hunting = 0; s->wait = 2.0f; s->speed = 0.0f;
+        float best = 1e9f;
+        for (int i = 0; i < n; i++) {
+            float ex = path[i][0] - s->contact.x, ez = path[i][1] - s->contact.z, e = ex * ex + ez * ez;
+            if (e < best) { best = e; s->leg = i; }
+        }
     }
-    s->contact.x = a[0] + dx * s->along / len;
-    s->contact.z = a[1] + dz * s->along / len;
+
+    float dx = s->hunting ? px : path[s->leg][0] - s->contact.x, dz = s->hunting ? pz : path[s->leg][1] - s->contact.z;
+    float dist = sqrtf(dx * dx + dz * dz), stop = s->hunting ? HUNT_REACH : 0.0f;
+    if (s->wait > 0.0f) s->wait -= dt;
+    int moving = s->wait <= 0.0f && dist > stop + 0.02f;
+    s->speed += ((moving ? (s->hunting ? HUNT_SPEED : walk) : 0.0f) - s->speed) * (1.0f - expf(-dt * 4.0f));
+    float step = s->speed * dt;
+    if (step > dist - stop) step = dist - stop > 0.0f ? dist - stop : 0.0f;
+    if (dist > 1e-4f) { s->contact.x += dx / dist * step; s->contact.z += dz / dist * step; }
+    if (!s->hunting && s->wait <= 0.0f && dist - step < 0.02f) { /* at the corner: stand there for one to four seconds */
+        s->leg = (s->leg + 1) % n; s->speed = 0.0f;
+        s->wait = 1.0f + 3.0f * (float)((s->leg * 7 + 3) % 5) / 4.0f;
+    }
     s->contact.motion = clampf(s->speed / walk, 0.0f, 1.0f);
+
+    if (s->hunting && step > 0.0f && dist > 1e-4f) {
+        s->stride += step;
+        if (s->stride >= PRINT_STRIDE) {
+            s->stride -= PRINT_STRIDE;
+            float yaw = atan2f(dx, -dz), side = s->hand ? -1.0f : 1.0f; /* yaw as the player's: 0 faces -Z */
+            float jitter = (float)rand() / (float)RAND_MAX - 0.5f;
+            float rx = cosf(yaw), rz = sinf(yaw); /* to the right of its line */
+            handprints_add(prints, s->contact.x + rx * (PRINT_SPREAD + 0.04f * jitter) * side, s->contact.z + rz * (PRINT_SPREAD + 0.04f * jitter) * side,
+                           yaw + side * 0.22f + jitter * 0.5f, s->hand, 0.0f);
+            s->hand = !s->hand;
+        }
+    }
 }
 
 static void save_screenshot(const char *path, int w, int h) {
@@ -202,10 +249,15 @@ int main(int argc, char **argv) {
     float lens_curve = look.lens_curve;
     float idle_t = 0.0f, idle_amount = 1.0f, arg_sway = -1.0f; /* idle camera sway: its clock, how still the player is */
     int horror = 0; float flick_wait = 3.0f, flick_left = 0.0f, flick_level = 1.0f; /* H: the harsh, dark look */
-    int flash_on = 0, lights_on = 1; /* F: hand torch, L: the room's lights */
+    int flash_on = 0, lights_on = 1; /* F: hand torch, L: every light in the level at once */
+    float room_level[OFFICE_ROOMS], room_timer[OFFICE_ROOMS]; /* each room's own lights, worked by its wall switch (E) */
+    int arg_room_off = 0; /* test: bit i set = room i starts with its switch off */
+    int arg_use_frame = -1; /* test: E is pressed on this frame */
+    for (int i = 0; i < OFFICE_ROOMS; i++) { room_level[i] = 1.0f; room_timer[i] = 10.0f; }
     float flash_level = 0.0f, light_level = 1.0f, light_timer = 10.0f, sway_t = 0.0f, sway_step = 0.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
     int arg_zoom = 0, default_scene = 0;
     int arg_tracker = 0, arg_tracker_focus = 0; /* test: the tracker held up; ... and the player looking past it */
+    int arg_prints = 0; /* test: a trail of handprints leading up to the player */
     float prev_yaw = 0.0f, prev_pitch = 0.0f;
     Signal sig = {0};
     const char *cmds[16]; int cmd_count = 0; /* editor commands to run, one every other frame */
@@ -257,9 +309,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--cmd") && i + 1 < argc) { if (cmd_count < 16) cmds[cmd_count++] = argv[++i]; else i++; } /* test: an editor command */
         else if (!strcmp(argv[i], "--flash")) flash_on = 1;
         else if (!strcmp(argv[i], "--lights-off")) { lights_on = 0; light_level = 0.0f; }
+        else if (!strcmp(argv[i], "--room-off") && i + 1 < argc) arg_room_off |= 1 << (atoi(argv[++i]) & 7); /* test: that room's switch is off (0 office, 1 hallway, 2 big room) */
+        else if (!strcmp(argv[i], "--press-use") && i + 1 < argc) arg_use_frame = atoi(argv[++i]); /* test: as if E were pressed on that frame */
         else if (!strcmp(argv[i], "--zoom")) arg_zoom = 1; /* test: as if the right mouse button were held */
         else if (!strcmp(argv[i], "--tracker")) arg_tracker = 1; /* test: as if Space were held */
         else if (!strcmp(argv[i], "--tracker-focus")) arg_tracker = arg_tracker_focus = 1; /* ... and the right mouse button too */
+        else if (!strcmp(argv[i], "--prints")) arg_prints = 1; /* test: handprints coming at the player, the nearest still landing */
         else if (!strcmp(argv[i], "--bench")) bench = 1; /* uncapped, prints frame times, exits */
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
     }
@@ -295,6 +350,10 @@ int main(int argc, char **argv) {
     if (!tracker_init(&tracker)) { fprintf(stderr, "tracker shader load failed\n"); return 1; }
     renderer.held_draw = tracker_draw;
     renderer.held_user = &tracker;
+    static Handprints prints;
+    if (!handprints_init(&prints)) { fprintf(stderr, "handprint shader load failed\n"); return 1; }
+    renderer.overlay_draw = handprints_draw;
+    renderer.overlay_user = &prints;
     double t_load = platform_time();
     if (!office_build(&office, asset_dir)) return 1;
     /* the scene as it was last saved from the editor, if there is one */
@@ -302,6 +361,8 @@ int main(int argc, char **argv) {
     snprintf(scene_path, sizeof scene_path, "%s/../office_scene.txt", asset_dir);
     int scene_loaded = !default_scene && office_load(&office, scene_path);
     double load_ms = (platform_time() - t_load) * 1000.0;
+    for (int i = 0; i < OFFICE_ROOMS; i++)
+        if (arg_room_off >> i & 1) { office_set_room_lights(&office, i, 0); room_level[i] = 0.0f; }
     interior_bake(&renderer, &office.scene, &look);
     if (scene_loaded) printf("office: loaded %d objects from %s\n", office.object_count, scene_path);
     printf("office: %d triangles, assets %.0f ms, light bake %.0f ms (%d x %d x %d probes)\n",
@@ -434,6 +495,7 @@ int main(int argc, char **argv) {
         if (PRESSED('F') && !ed.active && !typing) flash_on = !flash_on;          /* in the editor F frames the selection */
         if (PRESSED('H') && !ed.active && !typing) horror = !horror;               /* in the editor H hides the selection */
         if (PRESSED('L') && !typing && !ctrl) { lights_on = !lights_on; light_timer = 0.0f; }
+        int use = ((PRESSED('E') && !typing) || frame == arg_use_frame) && !ed.active; /* reach out and press what the player is looking at */
         if (PRESSED(VK_F5)) { ed.vsync = !ed.vsync; platform_set_vsync(ed.vsync); }
         if (!typing) {
             if (plat.keys[VK_OEM_MINUS]) look.exposure *= expf(-0.8f * dt);
@@ -444,6 +506,7 @@ int main(int argc, char **argv) {
             if (pad.pressed & GP_Y) flash_on = !flash_on;
             if (pad.pressed & GP_DUP) horror = !horror;
             if (pad.pressed & GP_B) pad_crouch = !pad_crouch;
+            if (pad.pressed & GP_A) use = 1;
         }
         if (pad.pressed & GP_X) { lights_on = !lights_on; light_timer = 0.0f; }
         if (pad.buttons & GP_DLEFT) look.exposure *= expf(-0.8f * dt);
@@ -570,6 +633,7 @@ int main(int argc, char **argv) {
             reload_timer = 0;
             if (interior_reload_shaders(&renderer)) interior_bake(&renderer, &office.scene, &look);
             tracker_reload_shaders(&tracker);
+            handprints_reload_shaders(&prints);
         }
 
         {   /* the tracker: what it picks up, how it is held, and where that puts the lens */
@@ -580,8 +644,18 @@ int main(int argc, char **argv) {
             in.bob_phase = player.bob_phase; in.bob_amount = player.bob_amount;
             in.origin = player.pos; in.yaw = player.yaw;
             if (TRACKER_DEMO_SIGNAL) {
-                if (shot) { sig.contact.x = 4.2f; sig.contact.z = -1.0f; sig.contact.motion = 1.0f; } /* a still picture: caught mid-stride in the hallway */
-                else signal_step(&sig, dt);
+                if (shot && arg_prints) { /* a still picture: it has crawled up to the player, its last hand just down */
+                    V3 a = cam_forward(player.yaw, 0.0f);
+                    if (frame == 0)
+                        for (int i = 0; i < 9; i++) {
+                            float d = 4.0f - 0.36f * (float)i, side = (i & 1) ? -1.0f : 1.0f;
+                            handprints_add(&prints, player.pos.x + a.x * d - a.z * 0.13f * side, player.pos.z + a.z * d + a.x * 0.13f * side,
+                                           player.yaw + PI + side * 0.22f, i & 1, i == 8 ? 0.09f : 0.45f * (float)(8 - i) + 0.3f);
+                        }
+                    sig.contact.x = player.pos.x + a.x * 1.1f; sig.contact.z = player.pos.z + a.z * 1.1f; sig.contact.motion = 1.0f;
+                }
+                else if (shot) { sig.contact.x = 4.2f; sig.contact.z = -1.0f; sig.contact.motion = 1.0f; } /* a still picture: caught mid-stride in the hallway */
+                else { signal_step(&sig, dt, player.pos, &prints); handprints_update(&prints, dt); }
                 in.contacts = &sig.contact; in.contact_count = 1;
             }
             tracker_update(&tracker, &in, (shot || bench) ? 0.0f : dt);
@@ -608,6 +682,20 @@ int main(int argc, char **argv) {
             fwd = cam_forward(player.yaw + yaw, player.pitch + pitch);
             renderer.cam_roll += a * (0.0030f * sinf(t * 0.43f + 0.8f) + 0.0012f * sinf(t * 1.03f));
             eye.y += a * 0.0035f * breath;
+        }
+        if (use) { /* a light switch on the wall: it works the lights of the room it is in, and no others */
+            int sw = office_switch_at(&office, eye, fwd);
+            if (sw >= 0) {
+                int room = office.switches[sw].room;
+                office_set_room_lights(&office, room, !office.room_on[room]);
+                room_timer[room] = 0.0f;
+            }
+        }
+        for (int i = 0; i < OFFICE_ROOMS; i++) { /* the same tubes as the master switch below */
+            room_timer[i] += dt;
+            if (office.room_on[i]) room_level[i] = tube_level(room_timer[i]);
+            else room_level[i] *= expf(-dt * 16.0f);
+            renderer.room_light[i] = room_level[i] < 0.002f ? 0.0f : room_level[i];
         }
         /* Room lights fade like a tube dying, the torch snaps on. The torch is held low on the right and
            trails the view a little, so the beam swings after the head instead of being glued to the screen. */
