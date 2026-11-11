@@ -50,6 +50,7 @@ add_executable(office
   src/interior.c
   src/tracker.c
   src/handprints.c
+  src/knock.c
   src/fbx.c
   src/inflate.c
   src/platform_win32.c
@@ -59,5 +60,5 @@ add_executable(office
   src/gamepad.c)
 
 target_compile_options(office PRIVATE -Wall -Wextra -O2)
-target_link_libraries(office PRIVATE cui::cui opengl32 gdi32 user32 m)
+target_link_libraries(office PRIVATE cui::cui opengl32 gdi32 user32 winmm m)
 target_link_options(office PRIVATE -static)

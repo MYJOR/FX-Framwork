@@ -65,6 +65,7 @@ typedef struct {
     int room_base;                /* where the fixed part starts in it */
     OfficeSwitch switches[OFFICE_MAX_SWITCHES]; int switch_count;
     int room_on[OFFICE_ROOMS];    /* per room: its switch is up, its ceiling lights are on */
+    V3 door;                      /* the red door at the end of the hallway: the middle of its leaf */
     V3 spawn;        /* feet position */
     float spawn_yaw;
 } Office;

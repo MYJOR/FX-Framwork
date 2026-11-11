@@ -59,7 +59,7 @@ static const float CEIL_COLS[4] = {1040.5f, 1199.0f, 1365.5f, 1525.5f};
 static const float CEIL_ROWS[4] = {8.5f, 156.5f, 324.5f, 485.0f};
 
 /* M_EMITTER0 + i is the diffuser of light i */
-enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER_LAST = M_EMITTER0 + INT_MAX_LIGHTS - 1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_SMUDGE, M_SWITCH, M_COUNT };
+enum { M_CHAIR, M_DESK, M_BASEBOARD, M_PANEL, M_EMITTER0, M_EMITTER_LAST = M_EMITTER0 + INT_MAX_LIGHTS - 1, M_VENT, M_FLOOR, M_WALL, M_CEILING, M_SMUDGE, M_SWITCH, M_DOOR, M_COUNT };
 
 /* ---- textures ----------------------------------------------------------------------------------- */
 
@@ -129,6 +129,25 @@ static GLuint load_png_texture(const char *path, int srgb) {
     if (!px) { fprintf(stderr, "[office] cannot load %s\n", path); return 0; }
     GLuint t = (ch == 3 || ch == 1) ? upload_texture(px, w, h, ch, srgb && ch == 3, GL_REPEAT, GL_REPEAT) : 0;
     free(px);
+    return t;
+}
+
+/* A cut-out picture (RGB or RGBA): what is transparent is painted with `fill`, so the picture's
+   edge does not pick up a dark fringe when it is filtered. The geometry is cut to the outline. */
+static GLuint load_cutout_texture(const char *path, const unsigned char fill[3]) {
+    int w, h, ch;
+    unsigned char *px = png_load(path, &w, &h, &ch);
+    if (!px || (ch != 3 && ch != 4)) { fprintf(stderr, "[office] cannot load %s\n", path); free(px); return 0; }
+    unsigned char *rgb = (unsigned char *)malloc((size_t)w * h * 3);
+    GLuint t = 0;
+    if (rgb) {
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            int a = ch == 4 ? px[i * 4 + 3] : 255;
+            for (int c = 0; c < 3; c++) rgb[i * 3 + c] = (unsigned char)((px[i * ch + c] * a + fill[c] * (255 - a) + 127) / 255);
+        }
+        t = upload_texture(rgb, w, h, 3, 1, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
+    }
+    free(rgb); free(px);
     return t;
 }
 
@@ -419,6 +438,63 @@ static void switch_lever(VertexBuf *b, const OfficeSwitch *sw, int on) {
         if (ny * mid_y + nz * mid_z < 0.0f) { ny = -ny; nz = -nz; }
         sw_quad(b, sw, q, sw_dir(sw, 0, ny, nz), 1);
     }
+}
+
+/* ---- the red door ------------------------------------------------------------------------------- */
+
+/* "red door.png" (1024 x 1536, cut out) is a panelled door in its frame, with a cornice over it that
+   is wider than the rest; "red door normal map.png" is its relief. It is modelled as two slabs to
+   that outline, standing off the hallway's end wall. Measured in the picture, in pixels: */
+#define DOOR_TEX_W 1024.0f
+#define DOOR_TEX_H 1536.0f
+#define DOOR_PX_MID 511.0f      /* its centre line */
+#define DOOR_PX_BOTTOM 1512.0f  /* where it stands on the floor */
+#define DOOR_PX_TOP 26.0f
+#define DOOR_PX_NECK 95.0f      /* the cornice ends here ... */
+#define DOOR_PX_TOP_HALF 369.0f /* ... its half width at the top ... */
+#define DOOR_PX_NECK_HALF 345.0f /* ... and where it meets the frame */
+#define DOOR_PX_HALF 342.0f     /* half width of the frame */
+#define DOOR_HEIGHT 2.30f       /* metres, floor to the top of the cornice */
+#define DOOR_M (DOOR_HEIGHT / (DOOR_PX_BOTTOM - DOOR_PX_TOP))
+#define DOOR_DEPTH 0.045f       /* how far the frame stands off the wall */
+#define DOOR_CORNICE 0.075f     /* ... and the cornice */
+
+/* One triangle of the door facing n. Corners are (x, y, depth): pixels of the picture and metres off
+   the wall. plain: show the door's bare paint instead of the picture at that spot (the slabs' edges). */
+static void door_tri(VertexBuf *b, V3 foot, const float p[3][3], V3 n, int plain) {
+    V3 w[3];
+    for (int i = 0; i < 3; i++) w[i] = v3(foot.x + (p[i][0] - DOOR_PX_MID) * DOOR_M, (DOOR_PX_BOTTOM - p[i][1]) * DOOR_M, foot.z + p[i][2]);
+    int order[3] = {0, 1, 2};
+    V3 e1 = v3_add(w[1], v3_scale(w[0], -1.0f)), e2 = v3_add(w[2], v3_scale(w[0], -1.0f));
+    if (v3_dot(v3_cross(e1, e2), n) < 0.0f) { order[1] = 2; order[2] = 1; }
+    for (int i = 0; i < 3; i++) {
+        int k = order[i];
+        float px = plain ? 512.0f : p[k][0], py = plain ? 1440.0f : p[k][1];
+        push_vertex(b, w[k], n, px / DOOR_TEX_W, 1.0f - py / DOOR_TEX_H);
+    }
+}
+static void door_quad(VertexBuf *b, V3 foot, float x0, float y0, float d0, float x1, float y1, float d1,
+                      float x2, float y2, float d2, float x3, float y3, float d3, V3 n, int plain) {
+    const float t0[3][3] = {{x0, y0, d0}, {x1, y1, d1}, {x2, y2, d2}}, t1[3][3] = {{x0, y0, d0}, {x2, y2, d2}, {x3, y3, d3}};
+    door_tri(b, foot, t0, n, plain);
+    door_tri(b, foot, t1, n, plain);
+}
+
+/* foot: the middle of its threshold, on the wall. It faces +z, down the hallway. */
+static void red_door(VertexBuf *b, V3 foot) {
+    const float l = DOOR_PX_MID - DOOR_PX_HALF, r = DOOR_PX_MID + DOOR_PX_HALF, top = DOOR_PX_NECK, bot = DOOR_PX_BOTTOM;
+    const float cl0 = DOOR_PX_MID - DOOR_PX_TOP_HALF, cr0 = DOOR_PX_MID + DOOR_PX_TOP_HALF; /* the cornice: wide at the top ... */
+    const float cl1 = DOOR_PX_MID - DOOR_PX_NECK_HALF, cr1 = DOOR_PX_MID + DOOR_PX_NECK_HALF; /* ... narrower where it sits on the frame */
+    const float d = DOOR_DEPTH, c = DOOR_CORNICE, ct = DOOR_PX_TOP;
+    V3 out = v3(0, 0, 1);
+    door_quad(b, foot, l, bot, d, r, bot, d, r, top, d, l, top, d, out, 0);                 /* the door in its frame */
+    door_quad(b, foot, l, bot, 0, l, bot, d, l, top, d, l, top, 0, v3(-1, 0, 0), 1);       /* its two sides */
+    door_quad(b, foot, r, bot, 0, r, bot, d, r, top, d, r, top, 0, v3(1, 0, 0), 1);
+    door_quad(b, foot, cl1, top, c, cr1, top, c, cr0, ct, c, cl0, ct, c, out, 0);           /* the cornice */
+    door_quad(b, foot, cl1, top, 0, cl1, top, c, cl0, ct, c, cl0, ct, 0, v3_norm(v3(-(top - ct), 0, 0)), 1); /* its ends, ... */
+    door_quad(b, foot, cr1, top, 0, cr1, top, c, cr0, ct, c, cr0, ct, 0, v3_norm(v3(top - ct, 0, 0)), 1);
+    door_quad(b, foot, cl0, ct, 0, cr0, ct, 0, cr0, ct, c, cl0, ct, c, v3(0, 1, 0), 1);     /* ... its top, and underneath */
+    door_quad(b, foot, cl1, top, 0, cr1, top, 0, cr1, top, c, cl1, top, c, v3(0, -1, 0), 1);
 }
 
 int office_room_at(float x) { return x < ROOM_HX + WALL_T * 0.5f ? 0 : (x < HALL_X1 + WALL_T * 0.5f ? 1 : 2); }
@@ -876,6 +952,11 @@ int office_build(Office *o, const char *asset_dir) {
     GLuint switch_albedo = load_png_texture(path, 1);
     snprintf(path, sizeof path, "%s/light switch normal map.png", asset_dir);
     GLuint switch_normal = load_png_texture(path, 0);
+    snprintf(path, sizeof path, "%s/red door.png", asset_dir);
+    const unsigned char door_red[3] = {120, 22, 22};
+    GLuint door_albedo = load_cutout_texture(path, door_red);
+    snprintf(path, sizeof path, "%s/red door normal map.png", asset_dir);
+    GLuint door_normal = load_png_texture(path, 0);
 
     /* ---- materials ---- */
     s->mat_count = M_COUNT;
@@ -912,6 +993,12 @@ int office_build(Office *o, const char *asset_dir) {
     s->mats[M_SWITCH].specular = 0.05f;
     /* the photograph is exposed darker than the room's other textures: lift it to the ivory it is */
     s->mats[M_SWITCH].tint[0] = s->mats[M_SWITCH].tint[1] = s->mats[M_SWITCH].tint[2] = 1.3f;
+    s->mats[M_DOOR] = material(door_albedo, 0.5f, MAT_SHELL); /* old gloss paint, gone dull where hands have been */
+    s->mats[M_DOOR].normal = door_normal;
+    s->mats[M_DOOR].normal_strength = 1.4f;
+    s->mats[M_DOOR].rough_variation = 0.25f;
+    s->mats[M_DOOR].specular = 0.05f;
+    if (!door_albedo) { s->mats[M_DOOR].tint[0] = 0.22f; s->mats[M_DOOR].tint[1] = 0.012f; s->mats[M_DOOR].tint[2] = 0.012f; }
     if (!switch_albedo) { s->mats[M_SWITCH].tint[0] = 0.50f; s->mats[M_SWITCH].tint[1] = 0.36f; s->mats[M_SWITCH].tint[2] = 0.22f; }
 
     /* ---- prototypes: what an object of each type is made of, in its own space ---- */
@@ -1061,6 +1148,15 @@ int office_build(Office *o, const char *asset_dir) {
             sw->lever = vb.n;
             switch_lever(&vb, sw, 1);
         }
+    }
+    end_room_draw(o, &vb);
+
+    /* the red door: in the middle of the hallway's end wall, the end to the left on coming out of the office */
+    begin_room_draw(o, &vb, M_DOOR);
+    {
+        V3 foot = v3((HALL_X0 + HALL_X1) * 0.5f, 0, -HALL_HZ);
+        red_door(&vb, foot);
+        o->door = v3(foot.x, 1.15f, foot.z + DOOR_DEPTH);
     }
     end_room_draw(o, &vb);
     o->room = vb.v;

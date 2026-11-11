@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "platform.h"
 #include "gl.h"
 #include "mathx.h"
@@ -12,6 +13,7 @@
 #include "office_editor.h"
 #include "tracker.h"
 #include "handprints.h"
+#include "knock.h"
 
 /* Office: first-person interior scene on the same platform / GL / shader layer as the desert.
  *
@@ -253,6 +255,7 @@ int main(int argc, char **argv) {
     float room_level[OFFICE_ROOMS], room_timer[OFFICE_ROOMS]; /* each room's own lights, worked by its wall switch (E) */
     int arg_room_off = 0; /* test: bit i set = room i starts with its switch off */
     int arg_use_frame = -1; /* test: E is pressed on this frame */
+    const char *knock_wav = NULL; int knock_wav_count = 0; /* test: write a knock sequence to a WAV file and quit */
     for (int i = 0; i < OFFICE_ROOMS; i++) { room_level[i] = 1.0f; room_timer[i] = 10.0f; }
     float flash_level = 0.0f, light_level = 1.0f, light_timer = 10.0f, sway_t = 0.0f, sway_step = 0.0f; V3 flash_dir = v3(0.0f, 0.0f, -1.0f);
     int arg_zoom = 0, default_scene = 0;
@@ -311,12 +314,19 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--lights-off")) { lights_on = 0; light_level = 0.0f; }
         else if (!strcmp(argv[i], "--room-off") && i + 1 < argc) arg_room_off |= 1 << (atoi(argv[++i]) & 7); /* test: that room's switch is off (0 office, 1 hallway, 2 big room) */
         else if (!strcmp(argv[i], "--press-use") && i + 1 < argc) arg_use_frame = atoi(argv[++i]); /* test: as if E were pressed on that frame */
+        else if (!strcmp(argv[i], "--knock-wav") && i + 2 < argc) { knock_wav_count = atoi(argv[++i]); knock_wav = argv[++i]; } /* test: knocks (0 = random), file */
         else if (!strcmp(argv[i], "--zoom")) arg_zoom = 1; /* test: as if the right mouse button were held */
         else if (!strcmp(argv[i], "--tracker")) arg_tracker = 1; /* test: as if Space were held */
         else if (!strcmp(argv[i], "--tracker-focus")) arg_tracker = arg_tracker_focus = 1; /* ... and the right mouse button too */
         else if (!strcmp(argv[i], "--prints")) arg_prints = 1; /* test: handprints coming at the player, the nearest still landing */
         else if (!strcmp(argv[i], "--bench")) bench = 1; /* uncapped, prints frame times, exits */
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
+    }
+
+    if (knock_wav) {
+        int ok = knock_write_wav(knock_wav, knock_wav_count, (unsigned)time(NULL));
+        printf(ok ? "saved %s\n" : "could not write %s\n", knock_wav);
+        return ok ? 0 : 1;
     }
 
     Platform plat;
@@ -405,6 +415,10 @@ int main(int argc, char **argv) {
         office_clamp_object(&office, obj);
         edit_flags = arg_fullbake ? (EDIT_SCENE | EDIT_FULL_BAKE) : EDIT_SCENE;
     }
+
+    static Knock knock; /* whatever is behind the red door */
+    knock_init(&knock, (unsigned)time(NULL));
+    knock.muted = shot || bench || headless;
 
     int key_was[256] = {0};
     int pad_crouch = 0; /* B on the controller toggles crouching: the thumb has to get back to the stick */
@@ -682,6 +696,10 @@ int main(int argc, char **argv) {
             fwd = cam_forward(player.yaw + yaw, player.pitch + pitch);
             renderer.cam_roll += a * (0.0030f * sinf(t * 0.43f + 0.8f) + 0.0012f * sinf(t * 1.03f));
             eye.y += a * 0.0035f * breath;
+        }
+        if (!ed.active) { /* the red door knocks whether anyone is near it or not; the editor is quiet */
+            int walls = abs(office_room_at(eye.x) - office_room_at(office.door.x));
+            knock_update(&knock, dt, office.door, eye, v3_norm(v3_cross(fwd, v3(0.0f, 1.0f, 0.0f))), walls);
         }
         if (use) { /* a light switch on the wall: it works the lights of the room it is in, and no others */
             int sw = office_switch_at(&office, eye, fwd);

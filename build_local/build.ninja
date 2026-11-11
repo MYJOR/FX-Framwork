@@ -277,6 +277,15 @@ build CMakeFiles/office.dir/src/handprints.c.obj: C_COMPILER__office_unscanned_R
   OBJECT_FILE_DIR = CMakeFiles\office.dir\src
   TARGET_SUPPORT_DIR = CMakeFiles\office.dir
 
+build CMakeFiles/office.dir/src/knock.c.obj: C_COMPILER__office_unscanned_Release D$:/Code$ Dump/FX-Framwork-1/src/knock.c || cmake_object_order_depends_target_office
+  CONFIG = Release
+  DEP_FILE = CMakeFiles\office.dir\src\knock.c.obj.d
+  FLAGS = -O3 -DNDEBUG -std=gnu11 -Wall -Wextra -O2
+  INCLUDES = -I"D:/Code Dump/FX-Framwork-1/third_party/CUI/include"
+  OBJECT_DIR = CMakeFiles\office.dir
+  OBJECT_FILE_DIR = CMakeFiles\office.dir\src
+  TARGET_SUPPORT_DIR = CMakeFiles\office.dir
+
 build CMakeFiles/office.dir/src/fbx.c.obj: C_COMPILER__office_unscanned_Release D$:/Code$ Dump/FX-Framwork-1/src/fbx.c || cmake_object_order_depends_target_office
   CONFIG = Release
   DEP_FILE = CMakeFiles\office.dir\src\fbx.c.obj.d
@@ -348,11 +357,11 @@ build CMakeFiles/office.dir/src/gamepad.c.obj: C_COMPILER__office_unscanned_Rele
 #############################################
 # Link the executable office.exe
 
-build office.exe: C_EXECUTABLE_LINKER__office_Release CMakeFiles/office.dir/src/office_main.c.obj CMakeFiles/office.dir/src/office_scene.c.obj CMakeFiles/office.dir/src/office_editor.c.obj CMakeFiles/office.dir/src/interior.c.obj CMakeFiles/office.dir/src/tracker.c.obj CMakeFiles/office.dir/src/handprints.c.obj CMakeFiles/office.dir/src/fbx.c.obj CMakeFiles/office.dir/src/inflate.c.obj CMakeFiles/office.dir/src/platform_win32.c.obj CMakeFiles/office.dir/src/gl.c.obj CMakeFiles/office.dir/src/shader.c.obj CMakeFiles/office.dir/src/png.c.obj CMakeFiles/office.dir/src/gamepad.c.obj | third_party/CUI/libcui.a || third_party/CUI/libcui.a
+build office.exe: C_EXECUTABLE_LINKER__office_Release CMakeFiles/office.dir/src/office_main.c.obj CMakeFiles/office.dir/src/office_scene.c.obj CMakeFiles/office.dir/src/office_editor.c.obj CMakeFiles/office.dir/src/interior.c.obj CMakeFiles/office.dir/src/tracker.c.obj CMakeFiles/office.dir/src/handprints.c.obj CMakeFiles/office.dir/src/knock.c.obj CMakeFiles/office.dir/src/fbx.c.obj CMakeFiles/office.dir/src/inflate.c.obj CMakeFiles/office.dir/src/platform_win32.c.obj CMakeFiles/office.dir/src/gl.c.obj CMakeFiles/office.dir/src/shader.c.obj CMakeFiles/office.dir/src/png.c.obj CMakeFiles/office.dir/src/gamepad.c.obj | third_party/CUI/libcui.a || third_party/CUI/libcui.a
   CONFIG = Release
   FLAGS = -O3 -DNDEBUG
   LINK_FLAGS = -static
-  LINK_LIBRARIES = third_party/CUI/libcui.a  -lopengl32  -lgdi32  -luser32  -lm  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
+  LINK_LIBRARIES = third_party/CUI/libcui.a  -lopengl32  -lgdi32  -luser32  -lwinmm  -lm  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\office.dir
   POST_BUILD = cd .
   PRE_LINK = cd .
